@@ -1,0 +1,31 @@
+# Build output
+target/
+*.log
+
+# Local project context
+GOAL.md
+RULE.md
+CHANGELOG.md
+AGENT.md
+AGENTS.md
+.agents/
+.claude/
+.codex/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+application-local.yml
+application-*.local.yml
+
+# Runtime data
+uploads/
+
+# IDE metadata
+.idea/
+*.iml
+.classpath
+.project
+.settings/
+.vscode/
