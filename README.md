@@ -38,4 +38,13 @@ $env:DB_PASSWORD="replace-with-a-local-password"
 
 The application listens on port `8080` by default. Set `SERVER_PORT` to override it.
 
+Registration resource guards are configurable through:
+
+- `AUTH_MAX_REQUEST_BODY_BYTES` (default `8192`)
+- `AUTH_MAX_CONCURRENT_PASSWORD_HASHES` (default `2`)
+- `AUTH_RETRY_AFTER_SECONDS` (default `1`)
+
+The password-hashing limit is local to each application instance. Production
+ingress must also enforce a shared registration rate limit and request-size cap.
+
 Flyway migrations belong in `src/main/resources/db/migration`. Hibernate validates the migrated schema and never creates or updates it.

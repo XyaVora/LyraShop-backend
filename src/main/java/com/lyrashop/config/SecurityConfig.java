@@ -21,11 +21,14 @@ import org.springframework.security.web.servlet.util.matcher.PathPatternRequestM
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import org.springframework.web.filter.CorsFilter;
 
+import com.lyrashop.exception.ApiErrorWriter;
+import com.lyrashop.security.AuthenticationRequestBodyLimitFilter;
 import com.lyrashop.security.RestSecurityErrorHandler;
 
 @Configuration
-@EnableConfigurationProperties(CorsProperties.class)
+@EnableConfigurationProperties({CorsProperties.class, AuthProtectionProperties.class})
 public class SecurityConfig {
 
     private static final String BCRYPT_ID = "bcrypt";
@@ -34,10 +37,19 @@ public class SecurityConfig {
     @Bean
     SecurityFilterChain securityFilterChain(
             HttpSecurity http,
-            RestSecurityErrorHandler securityErrorHandler
+            RestSecurityErrorHandler securityErrorHandler,
+            ApiErrorWriter errorWriter,
+            AuthProtectionProperties authProtectionProperties
     ) throws Exception {
         http
                 .cors(Customizer.withDefaults())
+                .addFilterAfter(
+                        new AuthenticationRequestBodyLimitFilter(
+                                authProtectionProperties.maxRequestBodyBytes(),
+                                errorWriter
+                        ),
+                        CorsFilter.class
+                )
                 .csrf(csrf -> csrf.ignoringRequestMatchers(
                         PathPatternRequestMatcher.withDefaults()
                                 .matcher(HttpMethod.POST, "/api/v1/auth/register")

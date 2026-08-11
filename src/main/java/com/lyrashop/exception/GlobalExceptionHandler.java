@@ -5,6 +5,7 @@ import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -106,6 +107,23 @@ public class GlobalExceptionHandler {
                         request.getRequestURI()
                 )
         );
+    }
+
+    @ExceptionHandler(AuthenticationCapacityExceededException.class)
+    ResponseEntity<ApiErrorResponse> handleAuthenticationCapacity(
+            AuthenticationCapacityExceededException exception,
+            HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header(HttpHeaders.RETRY_AFTER, Integer.toString(exception.getRetryAfterSeconds()))
+                .header(HttpHeaders.CACHE_CONTROL, "no-store")
+                .contentType(MediaType.APPLICATION_PROBLEM_JSON)
+                .body(ApiErrorResponse.of(
+                        HttpStatus.TOO_MANY_REQUESTS.value(),
+                        "AUTHENTICATION_BUSY",
+                        "Authentication is temporarily busy",
+                        request.getRequestURI()
+                ));
     }
 
     @ExceptionHandler(Exception.class)
