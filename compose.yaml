@@ -1,0 +1,143 @@
+name: lyrashop
+
+services:
+  mysql:
+    image: mysql:8.0.46@sha256:7dcddc01f13bab2f15cde676d44d01f61fc9f99fe7785e86196dfc07d358ae2b
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: lyrashop_db
+      MYSQL_USER: ${MYSQL_USER:-lyrashop}
+      MYSQL_PASSWORD_FILE: /run/secrets/mysql_password
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/mysql_root_password
+      TZ: UTC
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --default-time-zone=+00:00
+    secrets:
+      - mysql_password
+      - mysql_root_password
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - data
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "--silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 20s
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      DB_URL: jdbc:mysql://mysql:3306/lyrashop_db?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true
+      DB_USERNAME: ${MYSQL_USER:-lyrashop}
+      SPRING_CONFIG_IMPORT: configtree:/run/secrets/
+      SERVER_PORT: 8080
+      MANAGEMENT_SERVER_PORT: 8081
+      MANAGEMENT_SERVER_ADDRESS: 127.0.0.1
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+      AUTH_MAX_REQUEST_BODY_BYTES: ${AUTH_MAX_REQUEST_BODY_BYTES:-8192}
+      AUTH_MAX_CONCURRENT_PASSWORD_HASHES: ${AUTH_MAX_CONCURRENT_PASSWORD_HASHES:-2}
+      AUTH_RETRY_AFTER_SECONDS: ${AUTH_RETRY_AFTER_SECONDS:-1}
+    secrets:
+      - source: mysql_password
+        target: DB_PASSWORD
+    depends_on:
+      mysql:
+        condition: service_healthy
+        restart: true
+    networks:
+      - edge
+      - data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          wget -qO- http://127.0.0.1:8081/actuator/health/readiness |
+          grep -q '"status":"UP"'
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 20s
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    init: true
+    stop_grace_period: 30s
+
+  nginx:
+    image: nginx:1.30.4-alpine@sha256:97d490c12ba55b4946b01546d1c3ed324e8d41ab1c9fcb2a616aa470620e5b46
+    restart: unless-stopped
+    user: "101:101"
+    environment:
+      NGINX_ENVSUBST_FILTER: "^(API_|AUTH_|BACKEND_|REGISTRATION_)"
+      API_SERVER_NAME: ${API_SERVER_NAME:-api.lyrashop.local}
+      BACKEND_HOST: backend
+      BACKEND_PORT: 8080
+      BACKEND_DNS_RESOLVER: 127.0.0.11
+      AUTH_MAX_REQUEST_BODY_BYTES: ${AUTH_MAX_REQUEST_BODY_BYTES:-8192}
+      REGISTRATION_CORS_ALLOWED_ORIGIN: ${REGISTRATION_CORS_ALLOWED_ORIGIN:-http://localhost:5173}
+      REGISTRATION_PER_IP_RATE: ${REGISTRATION_PER_IP_RATE:-5r/m}
+      REGISTRATION_PER_IP_BURST: ${REGISTRATION_PER_IP_BURST:-2}
+      REGISTRATION_GLOBAL_RATE: ${REGISTRATION_GLOBAL_RATE:-30r/m}
+      REGISTRATION_GLOBAL_BURST: ${REGISTRATION_GLOBAL_BURST:-10}
+      REGISTRATION_RETRY_AFTER_SECONDS: ${REGISTRATION_RETRY_AFTER_SECONDS:-60}
+    volumes:
+      - ./deploy/nginx/templates/default.conf.template:/etc/nginx/templates/default.conf.template:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+        restart: true
+    networks:
+      - edge
+    ports:
+      - "${EDGE_BIND_ADDRESS:-127.0.0.1}:${EDGE_PORT:-8080}:8080"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          wget -q --spider
+          --header='Host: ${API_SERVER_NAME:-api.lyrashop.local}'
+          http://127.0.0.1:8080/nginx-health
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    read_only: true
+    tmpfs:
+      - /etc/nginx/conf.d:rw,noexec,nosuid,size=1m,uid=101,gid=101,mode=0755
+      - /var/cache/nginx:rw,noexec,nosuid,size=16m,uid=101,gid=101,mode=0755
+      - /run:rw,noexec,nosuid,size=1m,uid=101,gid=101,mode=0755
+      - /tmp:rw,noexec,nosuid,size=8m,uid=101,gid=101,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+
+networks:
+  edge:
+  data:
+    internal: true
+
+volumes:
+  mysql_data:
+
+secrets:
+  mysql_password:
+    file: ${MYSQL_PASSWORD_SECRET_FILE:-./deploy/secrets/mysql_password.txt}
+  mysql_root_password:
+    file: ${MYSQL_ROOT_PASSWORD_SECRET_FILE:-./deploy/secrets/mysql_root_password.txt}

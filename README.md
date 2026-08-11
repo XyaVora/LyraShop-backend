@@ -38,6 +38,45 @@ $env:DB_PASSWORD="replace-with-a-local-password"
 
 The application listens on port `8080` by default. Set `SERVER_PORT` to override it.
 
+## Run with Docker Compose
+
+The Compose stack runs MySQL, the backend, and Nginx. Only Nginx publishes a
+host port; the backend and database stay on isolated Docker networks.
+
+Create local configuration and secret files:
+
+```powershell
+Copy-Item .env.example .env
+New-Item -ItemType Directory -Force deploy/secrets | Out-Null
+[guid]::NewGuid().ToString("N") |
+    Set-Content -NoNewline deploy/secrets/mysql_password.txt
+[guid]::NewGuid().ToString("N") |
+    Set-Content -NoNewline deploy/secrets/mysql_root_password.txt
+```
+
+Validate and start the stack:
+
+```powershell
+docker compose config --quiet
+docker compose up --build --wait
+curl.exe -H "Host: api.lyrashop.local" http://127.0.0.1:8080/nginx-health
+```
+
+The default edge binding is `127.0.0.1:8080`. The backend runs as UID/GID
+`10001` with a read-only root filesystem, and its Actuator readiness endpoint
+is bound only to `127.0.0.1:8081` inside the backend container. MySQL data is
+stored in the `mysql_data` named volume. Remove that volume only when a full
+local database reset is intended:
+
+```powershell
+docker compose down
+docker compose down --volumes
+```
+
+This Compose file closes direct host-port access to the backend and database,
+but it is not the complete public production deployment. Keep the loopback
+binding until TLS, firewall rules, DNS, backup, and monitoring are configured.
+
 Registration resource guards are configurable through:
 
 - `AUTH_MAX_REQUEST_BODY_BYTES` (default `8192`)
