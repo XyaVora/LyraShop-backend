@@ -40,6 +40,11 @@ app:
       max-request-body-bytes: ${AUTH_MAX_REQUEST_BODY_BYTES:8192}
       max-concurrent-password-hashes: ${AUTH_MAX_CONCURRENT_PASSWORD_HASHES:2}
       retry-after-seconds: ${AUTH_RETRY_AFTER_SECONDS:1}
+    jwt:
+      issuer: ${JWT_ISSUER:https://api.lyrashop.local}
+      audience: ${JWT_AUDIENCE:lyrashop-api}
+      access-token-ttl: ${JWT_ACCESS_TOKEN_TTL:15m}
+      secret-base64: ${JWT_SECRET_BASE64:}
 
 management:
   server:

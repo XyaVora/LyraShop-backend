@@ -3,6 +3,7 @@ package com.lyrashop.security;
 import java.io.IOException;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpHeaders;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.access.AccessDeniedHandler;
@@ -30,6 +31,8 @@ public class RestSecurityErrorHandler implements AuthenticationEntryPoint, Acces
             HttpServletResponse response,
             AuthenticationException exception
     ) throws IOException {
+        response.setHeader(HttpHeaders.WWW_AUTHENTICATE, "Bearer");
+        response.setHeader(HttpHeaders.CACHE_CONTROL, "no-store");
         errorWriter.write(response, ApiErrorResponse.of(
                 HttpStatus.UNAUTHORIZED.value(),
                 "UNAUTHORIZED",
@@ -44,6 +47,7 @@ public class RestSecurityErrorHandler implements AuthenticationEntryPoint, Acces
             HttpServletResponse response,
             org.springframework.security.access.AccessDeniedException exception
     ) throws IOException, ServletException {
+        response.setHeader(HttpHeaders.CACHE_CONTROL, "no-store");
         errorWriter.write(response, ApiErrorResponse.of(
                 HttpStatus.FORBIDDEN.value(),
                 "FORBIDDEN",

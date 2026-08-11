@@ -18,13 +18,15 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import com.lyrashop.auth.controller.AuthController;
 import com.lyrashop.auth.dto.RegisterRequest;
+import com.lyrashop.auth.service.LoginService;
 import com.lyrashop.auth.service.RegistrationService;
 
 class GlobalExceptionHandlerTests {
 
     private final RegistrationService registrationService = mock(RegistrationService.class);
+    private final LoginService loginService = mock(LoginService.class);
     private final MockMvc mockMvc = MockMvcBuilders
-            .standaloneSetup(new AuthController(registrationService))
+            .standaloneSetup(new AuthController(registrationService, loginService))
             .setControllerAdvice(new GlobalExceptionHandler())
             .build();
 
