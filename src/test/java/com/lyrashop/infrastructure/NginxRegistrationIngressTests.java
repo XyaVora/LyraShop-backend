@@ -109,6 +109,8 @@ class NginxRegistrationIngressTests {
                             "rate=5r/m",
                             "rate=30r/m",
                             "client_max_body_size 8192;",
+                            "location = /actuator",
+                            "location ^~ /actuator/",
                             "$request_method",
                             "$uri",
                             "$binary_remote_addr",
@@ -183,6 +185,23 @@ class NginxRegistrationIngressTests {
                         Map.of("Content-Type", "application/json")
                 ).statusCode()).isEqualTo(200);
             }
+
+            HttpResponse<String> blockedManagementEndpoint = send(
+                    gateway,
+                    "GET",
+                    "/actuator/health/readiness",
+                    HttpRequest.BodyPublishers.noBody(),
+                    Map.of()
+            );
+            assertThat(blockedManagementEndpoint.statusCode()).isEqualTo(404);
+            assertThat(blockedManagementEndpoint.headers().firstValue("X-Upstream-Id")).isEmpty();
+            assertThat(send(
+                    gateway,
+                    "GET",
+                    "/actuator",
+                    HttpRequest.BodyPublishers.noBody(),
+                    Map.of()
+            ).statusCode()).isEqualTo(404);
 
             assertThat(sendRegistration(gateway, REGISTRATION_PATH + "/", Map.of()).statusCode())
                     .isEqualTo(404);

@@ -73,6 +73,14 @@ server {
         return 204;
     }
 
+    location = /actuator {
+        return 404;
+    }
+
+    location ^~ /actuator/ {
+        return 404;
+    }
+
     location = /api/v1/auth/register {
         client_max_body_size ${AUTH_MAX_REQUEST_BODY_BYTES};
         proxy_request_buffering on;

@@ -41,6 +41,23 @@ app:
       max-concurrent-password-hashes: ${AUTH_MAX_CONCURRENT_PASSWORD_HASHES:2}
       retry-after-seconds: ${AUTH_RETRY_AFTER_SECONDS:1}
 
+management:
+  server:
+    port: ${MANAGEMENT_SERVER_PORT:8081}
+    address: ${MANAGEMENT_SERVER_ADDRESS:127.0.0.1}
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+      probes:
+        enabled: true
+      group:
+        readiness:
+          include: readinessState,db
+
 logging:
   level:
     org.hibernate.engine.jdbc.spi.SqlExceptionHelper: "OFF"

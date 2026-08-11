@@ -21,6 +21,7 @@ application-*.local.yml
 
 # Runtime data
 uploads/
+deploy/secrets/
 
 # IDE metadata
 .idea/
