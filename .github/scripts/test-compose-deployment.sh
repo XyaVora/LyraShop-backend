@@ -12,6 +12,8 @@ app_secret="${secret_dir}/mysql_password.txt"
 root_secret="${secret_dir}/mysql_root_password.txt"
 jwt_secret="${secret_dir}/jwt_secret_base64.txt"
 request_body="${secret_dir}/register-request.json"
+login_request_body="${secret_dir}/login-request.json"
+invalid_login_request_body="${secret_dir}/invalid-login-request.json"
 response_body="${secret_dir}/register-response.json"
 error_body="${secret_dir}/error-response.json"
 
@@ -28,6 +30,11 @@ export REGISTRATION_PER_IP_RATE=1r/m
 export REGISTRATION_PER_IP_BURST=1
 export REGISTRATION_GLOBAL_RATE=100r/m
 export REGISTRATION_GLOBAL_BURST=100
+export LOGIN_MAX_REQUEST_BODY_BYTES=4096
+export LOGIN_PER_IP_RATE=1r/m
+export LOGIN_PER_IP_BURST=1
+export LOGIN_GLOBAL_RATE=100r/m
+export LOGIN_GLOBAL_BURST=100
 
 compose=(docker compose -p "$project")
 
@@ -41,7 +48,9 @@ cleanup() {
     fi
     "${compose[@]}" down --volumes --remove-orphans || cleanup_failed=1
     docker image rm "${project}-backend:latest" >/dev/null 2>&1 || true
-    rm -f "$app_secret" "$root_secret" "$jwt_secret" "$request_body" "$response_body" "$error_body" ||
+    rm -f "$app_secret" "$root_secret" "$jwt_secret" "$request_body" \
+        "$login_request_body" "$invalid_login_request_body" \
+        "$response_body" "$error_body" ||
         cleanup_failed=1
     rmdir "$secret_dir" 2>/dev/null || cleanup_failed=1
     trap - EXIT
@@ -148,6 +157,25 @@ printf '{"email":"%s","password":"StrongPassword123!","fullName":"Compose Smoke"
 register_status="$(curl -sS --connect-timeout 5 --max-time 30 -o "$response_body" -w '%{http_code}' -H "Host: ${API_SERVER_NAME}" -H 'Content-Type: application/json' --data-binary "@$request_body" "${base_url}/api/v1/auth/register")"
 [[ "$register_status" == "201" ]] || fail "registration returned HTTP $register_status"
 grep -Fq "$email" "$response_body" || fail "registration response omitted canonical email"
+
+printf '{"email":"%s","password":"StrongPassword123!"}' "$email" > "$login_request_body"
+login_status="$(curl -sS --connect-timeout 5 --max-time 30 -o "$response_body" -w '%{http_code}' -H "Host: ${API_SERVER_NAME}" -H 'Content-Type: application/json' --data-binary "@$login_request_body" "${base_url}/api/v1/auth/login")"
+[[ "$login_status" == "200" ]] || fail "login returned HTTP $login_status"
+grep -Fq '"accessToken":"' "$response_body" || fail "login response omitted access token"
+grep -Fq '"tokenType":"Bearer"' "$response_body" || fail "login response omitted bearer token type"
+grep -Fq '"expiresIn":900' "$response_body" || fail "login response omitted access token lifetime"
+
+printf '{"email":"%s","password":"WrongPassword123!"}' "$email" > "$invalid_login_request_body"
+invalid_login_status="$(curl -sS --connect-timeout 5 --max-time 30 -o "$error_body" -w '%{http_code}' -H "Host: ${API_SERVER_NAME}" -H 'Content-Type: application/json' --data-binary "@$invalid_login_request_body" "${base_url}/api/v1/auth/login")"
+[[ "$invalid_login_status" == "401" ]] || fail "invalid login returned HTTP $invalid_login_status"
+grep -Fq '"code":"INVALID_CREDENTIALS"' "$error_body" ||
+    fail "invalid login response omitted generic error code"
+
+limited_login_status="$(curl -sS --connect-timeout 5 --max-time 15 -o "$error_body" -w '%{http_code}' -H "Host: ${API_SERVER_NAME}" -H 'Content-Type: application/json' --data-binary "@$login_request_body" "${base_url}/api/v1/auth/login")"
+[[ "$limited_login_status" == "429" ]] ||
+    fail "login ingress limiter returned HTTP $limited_login_status"
+grep -Fq '"code":"LOGIN_RATE_LIMITED"' "$error_body" ||
+    fail "login ingress limiter response omitted stable error code"
 
 duplicate_status="$(curl -sS --connect-timeout 5 --max-time 30 -o "$error_body" -w '%{http_code}' -H "Host: ${API_SERVER_NAME}" -H 'Content-Type: application/json' --data-binary "@$request_body" "${base_url}/api/v1/auth/register")"
 [[ "$duplicate_status" == "409" ]] || fail "duplicate registration returned HTTP $duplicate_status"
