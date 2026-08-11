@@ -1,0 +1,553 @@
+package com.lyrashop.infrastructure;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.io.ByteArrayInputStream;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
+import java.time.Duration;
+import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
+
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.parallel.Execution;
+import org.junit.jupiter.api.parallel.ExecutionMode;
+import org.testcontainers.containers.Container;
+import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.containers.Network;
+import org.testcontainers.containers.wait.strategy.Wait;
+import org.testcontainers.images.builder.Transferable;
+import org.testcontainers.lifecycle.Startables;
+import org.testcontainers.utility.DockerImageName;
+import org.testcontainers.utility.MountableFile;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+@Timeout(value = 90, unit = TimeUnit.SECONDS)
+@Execution(ExecutionMode.SAME_THREAD)
+class NginxRegistrationIngressTests {
+
+    private static final DockerImageName NGINX_IMAGE = DockerImageName.parse(
+            "nginx:1.30.4-alpine@sha256:97d490c12ba55b4946b01546d1c3ed324e8d41ab1c9fcb2a616aa470620e5b46"
+    );
+    private static final Path CONFIG_TEMPLATE = Path.of(
+            "deploy",
+            "nginx",
+            "templates",
+            "default.conf.template"
+    ).toAbsolutePath().normalize();
+    private static final String API_HOST = "127.0.0.1";
+    private static final String ALLOWED_ORIGIN = "https://shop.example.test";
+    private static final String REGISTRATION_PATH = "/api/v1/auth/register";
+    private static final Network NETWORK = Network.newNetwork();
+    private static final GenericContainer<?> UPSTREAM_A = upstream("a");
+    private static final GenericContainer<?> UPSTREAM_B = upstream("b");
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(5))
+            .version(HttpClient.Version.HTTP_1_1)
+            .build();
+
+    @BeforeAll
+    static void startUpstreams() {
+        Startables.deepStart(Stream.of(UPSTREAM_A, UPSTREAM_B)).join();
+    }
+
+    @AfterAll
+    static void stopUpstreams() {
+        Stream.of(UPSTREAM_A, UPSTREAM_B)
+                .parallel()
+                .filter(GenericContainer::isRunning)
+                .forEach(GenericContainer::stop);
+        NETWORK.close();
+    }
+
+    @Test
+    void rendersACompleteValidConfiguration() throws Exception {
+        try (Gateway gateway = startGateway(Policy.productionDefaults())) {
+            Container.ExecResult syntaxCheck = gateway.container().execInContainer("nginx", "-t");
+            Container.ExecResult renderedConfig = gateway.container().execInContainer(
+                    "cat",
+                    "/etc/nginx/conf.d/default.conf"
+            );
+            Container.ExecResult fullConfig = gateway.container().execInContainer("nginx", "-T");
+
+            assertThat(syntaxCheck.getExitCode()).isZero();
+            assertThat(syntaxCheck.getStderr()).contains("test is successful");
+            assertThat(renderedConfig.getExitCode()).isZero();
+            assertThat(fullConfig.getExitCode()).isZero();
+            assertThat(fullConfig.getStdout().lines().toList())
+                    .noneMatch(line -> line.matches("\\s*listen\\s+80(?:\\s.*|;)")
+                            || line.matches("\\s*listen\\s+\\[::\\]:80(?:\\s.*|;)"));
+            assertThat(renderedConfig.getStdout())
+                    .doesNotContain(
+                            "${API_",
+                            "${BACKEND_",
+                            "${CORS_",
+                            "${REGISTRATION_"
+                    )
+                    .contains(
+                            "resolver 127.0.0.11 valid=10s ipv6=off;",
+                            "server backend:8080 resolve;",
+                            "rate=5r/m",
+                            "rate=30r/m",
+                            "client_max_body_size 8192;",
+                            "$request_method",
+                            "$uri",
+                            "$binary_remote_addr",
+                            "$remote_addr"
+                    );
+        }
+    }
+
+    @Test
+    void sharesPerIpQuotaAcrossQueriesAndBackendReplicas() throws Exception {
+        try (Gateway gateway = startGateway(Policy.perIpLimited())) {
+            List<HttpResponse<String>> responses = sendConcurrentRegistrations(gateway, 12);
+            List<HttpResponse<String>> accepted = responses.stream()
+                    .filter(response -> response.statusCode() == 200)
+                    .toList();
+            List<HttpResponse<String>> rejected = responses.stream()
+                    .filter(response -> response.statusCode() == 429)
+                    .toList();
+
+            assertThat(accepted).hasSize(3);
+            assertThat(rejected).hasSize(9);
+            assertThat(accepted)
+                    .extracting(response -> header(response, "X-Upstream-Id"))
+                    .contains("a", "b");
+            assertThat(rejected)
+                    .allSatisfy(response -> {
+                        assertRegistrationRateLimit(response, ALLOWED_ORIGIN);
+                        assertThat(response.headers().firstValue("X-Upstream-Id")).isEmpty();
+                        assertThat(response.body()).doesNotContain("spoofed");
+                    });
+
+            HttpResponse<String> disallowedOrigin = send(
+                    gateway,
+                    "POST",
+                    REGISTRATION_PATH,
+                    HttpRequest.BodyPublishers.ofString("{}"),
+                    Map.of("Origin", "https://attacker.example.test")
+            );
+            assertThat(disallowedOrigin.statusCode()).isEqualTo(429);
+            assertThat(disallowedOrigin.headers().firstValue("Access-Control-Allow-Origin")).isEmpty();
+        }
+    }
+
+    @Test
+    void chargesOnlyNormalizedRegistrationPosts() throws Exception {
+        try (Gateway gateway = startGateway(Policy.perIpLimited())) {
+            for (int attempt = 0; attempt < 5; attempt++) {
+                assertThat(send(
+                        gateway,
+                        "OPTIONS",
+                        REGISTRATION_PATH,
+                        HttpRequest.BodyPublishers.noBody(),
+                        Map.of(
+                                "Origin", ALLOWED_ORIGIN,
+                                "Access-Control-Request-Method", "POST",
+                                "Access-Control-Request-Headers", "content-type"
+                        )
+                ).statusCode()).isEqualTo(200);
+                assertThat(send(
+                        gateway,
+                        "GET",
+                        REGISTRATION_PATH,
+                        HttpRequest.BodyPublishers.noBody(),
+                        Map.of()
+                ).statusCode()).isEqualTo(200);
+                assertThat(send(
+                        gateway,
+                        "POST",
+                        "/api/v1/auth/login",
+                        HttpRequest.BodyPublishers.ofString("{}"),
+                        Map.of("Content-Type", "application/json")
+                ).statusCode()).isEqualTo(200);
+            }
+
+            assertThat(sendRegistration(gateway, REGISTRATION_PATH + "/", Map.of()).statusCode())
+                    .isEqualTo(404);
+            assertThat(sendRegistration(gateway, REGISTRATION_PATH + ";scope=other", Map.of()).statusCode())
+                    .isEqualTo(404);
+            assertThat(sendRegistration(gateway, REGISTRATION_PATH + "%3Bscope=other", Map.of()).statusCode())
+                    .isEqualTo(404);
+
+            assertThat(List.of(
+                    sendRegistration(gateway, REGISTRATION_PATH, Map.of()).statusCode(),
+                    sendRegistration(gateway, "/api//v1/auth/register", Map.of()).statusCode(),
+                    sendRegistration(gateway, REGISTRATION_PATH + "?attempt=query", Map.of()).statusCode(),
+                    sendRegistration(gateway, REGISTRATION_PATH, Map.of()).statusCode()
+            )).containsExactly(200, 200, 200, 429);
+        }
+    }
+
+    @Test
+    void appliesBodyCapToKnownAndChunkedBodies() throws Exception {
+        byte[] maximumBody = new byte[8_192];
+        byte[] oversizedBody = new byte[8_193];
+
+        try (Gateway gateway = startGateway(Policy.highCapacity())) {
+            HttpResponse<String> accepted = send(
+                    gateway,
+                    "POST",
+                    REGISTRATION_PATH,
+                    HttpRequest.BodyPublishers.ofByteArray(maximumBody),
+                    Map.of("Content-Type", "application/octet-stream")
+            );
+            HttpResponse<String> knownLength = send(
+                    gateway,
+                    "POST",
+                    REGISTRATION_PATH,
+                    HttpRequest.BodyPublishers.ofByteArray(oversizedBody),
+                    Map.of("Origin", ALLOWED_ORIGIN)
+            );
+            HttpResponse<String> chunked = send(
+                    gateway,
+                    "POST",
+                    REGISTRATION_PATH,
+                    HttpRequest.BodyPublishers.ofInputStream(
+                            () -> new ByteArrayInputStream(oversizedBody)
+                    ),
+                    Map.of("Origin", ALLOWED_ORIGIN)
+            );
+            HttpResponse<String> disallowedOrigin = send(
+                    gateway,
+                    "POST",
+                    REGISTRATION_PATH,
+                    HttpRequest.BodyPublishers.ofByteArray(oversizedBody),
+                    Map.of("Origin", "https://attacker.example.test")
+            );
+
+            assertThat(accepted.statusCode()).isEqualTo(200);
+            assertThat(header(accepted, "X-Upstream-Id")).isIn("a", "b");
+            assertPayloadTooLarge(knownLength);
+            assertPayloadTooLarge(chunked);
+            assertThat(disallowedOrigin.statusCode()).isEqualTo(413);
+            assertThat(disallowedOrigin.headers().firstValue("Access-Control-Allow-Origin")).isEmpty();
+        }
+    }
+
+    @Test
+    void preservesApplicationGeneratedRateLimitResponses() throws Exception {
+        try (Gateway gateway = startGateway(Policy.highCapacity())) {
+            HttpResponse<String> response = sendRegistration(
+                    gateway,
+                    REGISTRATION_PATH,
+                    Map.of("X-Test-Upstream-Status", "429")
+            );
+
+            assertThat(response.statusCode()).isEqualTo(429);
+            assertThat(response.body())
+                    .contains("AUTHENTICATION_BUSY")
+                    .doesNotContain("REGISTRATION_RATE_LIMITED");
+            assertThat(header(response, "X-Upstream-Error")).isEqualTo("preserved");
+            assertThat(header(response, "Access-Control-Expose-Headers"))
+                    .containsIgnoringCase("Retry-After");
+            assertThat(response.headers().firstValue("Retry-After")).isEmpty();
+        }
+    }
+
+    @Test
+    void overwritesUntrustedForwardingHeaders() throws Exception {
+        try (Gateway gateway = startGateway(Policy.highCapacity())) {
+            HttpResponse<String> response = sendRegistration(
+                    gateway,
+                    REGISTRATION_PATH,
+                    Map.of(
+                            "Forwarded", "for=spoofed.example",
+                            "X-Forwarded-For", "203.0.113.10",
+                            "X-Real-IP", "198.51.100.20"
+                    )
+            );
+
+            assertThat(response.statusCode()).isEqualTo(200);
+            assertThat(header(response, "X-Seen-Xff"))
+                    .isEqualTo(header(response, "X-Seen-X-Real-Ip"))
+                    .isNotBlank()
+                    .matches("[0-9a-fA-F:.]+")
+                    .doesNotContain("203.0.113.10", "198.51.100.20", "spoofed");
+            assertThat(response.headers().firstValue("X-Seen-Forwarded")).isEmpty();
+            assertThat(header(response, "X-Seen-Host")).isEqualTo(API_HOST);
+            assertThat(header(response, "X-Seen-X-Forwarded-Proto")).isEqualTo("http");
+        }
+    }
+
+    @Test
+    void enforcesOneGlobalQuotaAcrossDistinctClientAddresses() throws Exception {
+        try (Gateway gateway = startGateway(Policy.globallyLimited())) {
+            Container.ExecResult firstClient = registrationFrom(UPSTREAM_A);
+            Container.ExecResult secondClient = registrationFrom(UPSTREAM_B);
+            Container.ExecResult thirdAttempt = registrationFrom(UPSTREAM_A);
+
+            assertThat(firstClient.getExitCode()).isZero();
+            assertThat(secondClient.getExitCode()).isZero();
+            assertThat(thirdAttempt.getExitCode()).isNotZero();
+            assertThat(thirdAttempt.getStdout() + thirdAttempt.getStderr())
+                    .contains("429");
+        }
+    }
+
+    @Test
+    void keepsPerIpQuotaIndependentAcrossClientAddresses() throws Exception {
+        try (Gateway gateway = startGateway(Policy.perIpLimited())) {
+            assertThat(registrationFrom(UPSTREAM_A).getExitCode()).isZero();
+            assertThat(registrationFrom(UPSTREAM_A).getExitCode()).isZero();
+            assertThat(registrationFrom(UPSTREAM_A).getExitCode()).isZero();
+            Container.ExecResult exhaustedClient = registrationFrom(UPSTREAM_A);
+            assertThat(exhaustedClient.getExitCode()).isNotZero();
+            assertThat(exhaustedClient.getStdout() + exhaustedClient.getStderr())
+                    .contains("429");
+            assertThat(registrationFrom(UPSTREAM_B).getExitCode()).isZero();
+        }
+    }
+
+    private static GenericContainer<?> upstream(String id) {
+        String config = """
+                server {
+                    listen 8080;
+                    server_name _;
+                    default_type application/json;
+
+                    add_header X-Upstream-Id "%s" always;
+                    add_header X-Upstream-Error "preserved" always;
+                    add_header X-Seen-Xff "$http_x_forwarded_for" always;
+                    add_header X-Seen-X-Real-Ip "$http_x_real_ip" always;
+                    add_header X-Seen-Forwarded "$http_forwarded" always;
+                    add_header X-Seen-Host "$http_host" always;
+                    add_header X-Seen-X-Forwarded-Proto "$http_x_forwarded_proto" always;
+
+                    location / {
+                        if ($http_x_test_upstream_status = "429") {
+                            return 429 '{"status":429,"code":"AUTHENTICATION_BUSY"}';
+                        }
+                        return 200 '{"upstream":"%s"}';
+                    }
+                }
+                """.formatted(id, id);
+
+        return new GenericContainer<>(NGINX_IMAGE)
+                .withNetwork(NETWORK)
+                .withNetworkAliases("backend")
+                .withExposedPorts(8080)
+                .withCopyToContainer(
+                        Transferable.of(config.getBytes(StandardCharsets.UTF_8), 0644),
+                        "/etc/nginx/conf.d/default.conf"
+                )
+                .waitingFor(Wait.forHttp("/").forPort(8080).forStatusCode(200)
+                        .withStartupTimeout(Duration.ofSeconds(30)));
+    }
+
+    private static Gateway startGateway(Policy policy) {
+        GenericContainer<?> container = new GenericContainer<>(NGINX_IMAGE)
+                .withNetwork(NETWORK)
+                .withNetworkAliases("gateway")
+                .withExposedPorts(8080)
+                .withCopyFileToContainer(
+                        MountableFile.forHostPath(CONFIG_TEMPLATE),
+                        "/etc/nginx/templates/default.conf.template"
+                )
+                .withEnv("NGINX_ENVSUBST_FILTER", "^(API_|AUTH_|BACKEND_|REGISTRATION_)")
+                .withEnv("API_SERVER_NAME", API_HOST)
+                .withEnv("BACKEND_HOST", "backend")
+                .withEnv("BACKEND_PORT", "8080")
+                .withEnv("BACKEND_DNS_RESOLVER", "127.0.0.11")
+                .withEnv("AUTH_MAX_REQUEST_BODY_BYTES", "8192")
+                .withEnv("REGISTRATION_CORS_ALLOWED_ORIGIN", ALLOWED_ORIGIN)
+                .withEnv("REGISTRATION_PER_IP_RATE", policy.perIpRate())
+                .withEnv("REGISTRATION_PER_IP_BURST", policy.perIpBurst())
+                .withEnv("REGISTRATION_GLOBAL_RATE", policy.globalRate())
+                .withEnv("REGISTRATION_GLOBAL_BURST", policy.globalBurst())
+                .withEnv("REGISTRATION_RETRY_AFTER_SECONDS", "60")
+                .waitingFor(Wait.forListeningPort()
+                        .withStartupTimeout(Duration.ofSeconds(30)));
+        container.start();
+        return new Gateway(container);
+    }
+
+    private static List<HttpResponse<String>> sendConcurrentRegistrations(
+            Gateway gateway,
+            int requestCount
+    ) throws Exception {
+        CyclicBarrier barrier = new CyclicBarrier(requestCount);
+        ExecutorService executor = Executors.newFixedThreadPool(requestCount);
+        List<Future<HttpResponse<String>>> futures = new ArrayList<>();
+
+        try {
+            for (int attempt = 0; attempt < requestCount; attempt++) {
+                int requestNumber = attempt;
+                futures.add(executor.submit(() -> {
+                    barrier.await(10, TimeUnit.SECONDS);
+                    return sendRegistration(
+                            gateway,
+                            REGISTRATION_PATH + "?attempt=" + requestNumber,
+                            Map.of(
+                                    "Origin", ALLOWED_ORIGIN,
+                                    "X-Forwarded-For", "spoofed-" + requestNumber
+                            )
+                    );
+                }));
+            }
+
+            List<HttpResponse<String>> responses = new ArrayList<>();
+            for (Future<HttpResponse<String>> future : futures) {
+                responses.add(future.get(20, TimeUnit.SECONDS));
+            }
+            return responses;
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    private static HttpResponse<String> sendRegistration(
+            Gateway gateway,
+            String path,
+            Map<String, String> headers
+    ) throws Exception {
+        return send(
+                gateway,
+                "POST",
+                path,
+                HttpRequest.BodyPublishers.ofString("{}"),
+                headers
+        );
+    }
+
+    private static HttpResponse<String> send(
+            Gateway gateway,
+            String method,
+            String path,
+            HttpRequest.BodyPublisher body,
+            Map<String, String> headers
+    ) throws Exception {
+        HttpRequest.Builder request = HttpRequest.newBuilder(gateway.uri(path))
+                .timeout(Duration.ofSeconds(10));
+        headers.forEach(request::header);
+
+        return HTTP_CLIENT.send(
+                request.method(method, body).build(),
+                HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
+        );
+    }
+
+    private static Container.ExecResult registrationFrom(GenericContainer<?> client)
+            throws Exception {
+        return client.execInContainer(
+                "sh",
+                "-c",
+                "wget -S -O /dev/null --header='Host: " + API_HOST
+                        + "' --header='Content-Type: application/json' --post-data='{}' "
+                        + "http://gateway:8080" + REGISTRATION_PATH + " 2>&1"
+        );
+    }
+
+    private static void assertRegistrationRateLimit(
+            HttpResponse<String> response,
+            String allowedOrigin
+    ) {
+        assertThat(response.statusCode()).isEqualTo(429);
+        assertThat(header(response, "Content-Type")).startsWith("application/problem+json");
+        assertThat(header(response, "Cache-Control")).isEqualTo("no-store");
+        assertThat(header(response, "Retry-After")).isEqualTo("60");
+        assertThat(header(response, "Access-Control-Expose-Headers"))
+                .containsIgnoringCase("Retry-After");
+        assertThat(header(response, "Access-Control-Allow-Origin")).isEqualTo(allowedOrigin);
+        assertThat(header(response, "Vary")).contains("Origin");
+        JsonNode problem = parseProblem(response);
+        assertThat(problem.path("status").asInt()).isEqualTo(429);
+        assertThat(problem.path("code").asText()).isEqualTo("REGISTRATION_RATE_LIMITED");
+        assertThat(problem.path("message").asText()).isEqualTo("Too many registration attempts");
+        assertThat(problem.path("path").asText()).isEqualTo(REGISTRATION_PATH);
+        assertThat(problem.path("fieldErrors").isObject()).isTrue();
+        assertThat(problem.path("fieldErrors").isEmpty()).isTrue();
+        assertThat(OffsetDateTime.parse(problem.path("timestamp").asText())).isNotNull();
+    }
+
+    private static void assertPayloadTooLarge(HttpResponse<String> response) {
+        assertThat(response.statusCode()).isEqualTo(413);
+        assertThat(header(response, "Content-Type")).startsWith("application/problem+json");
+        assertThat(header(response, "Cache-Control")).isEqualTo("no-store");
+        assertThat(header(response, "Access-Control-Allow-Origin")).isEqualTo(ALLOWED_ORIGIN);
+        assertThat(response.headers().firstValue("Retry-After")).isEmpty();
+        assertThat(response.headers().firstValue("X-Upstream-Id")).isEmpty();
+        JsonNode problem = parseProblem(response);
+        assertThat(problem.path("status").asInt()).isEqualTo(413);
+        assertThat(problem.path("code").asText()).isEqualTo("PAYLOAD_TOO_LARGE");
+        assertThat(problem.path("message").asText())
+                .isEqualTo("Request body exceeds the allowed size");
+        assertThat(problem.path("path").asText()).isEqualTo(REGISTRATION_PATH);
+        assertThat(problem.path("fieldErrors").isObject()).isTrue();
+        assertThat(problem.path("fieldErrors").isEmpty()).isTrue();
+        assertThat(OffsetDateTime.parse(problem.path("timestamp").asText())).isNotNull();
+    }
+
+    private static JsonNode parseProblem(HttpResponse<String> response) {
+        try {
+            return OBJECT_MAPPER.readTree(response.body());
+        } catch (Exception exception) {
+            throw new AssertionError("Nginx did not return valid problem JSON", exception);
+        }
+    }
+
+    private static String header(HttpResponse<String> response, String name) {
+        return response.headers().firstValue(name).orElse("");
+    }
+
+    private record Gateway(GenericContainer<?> container) implements AutoCloseable {
+
+        URI uri(String path) {
+            String host = "localhost".equals(container.getHost())
+                    ? "127.0.0.1"
+                    : container.getHost();
+            return URI.create(
+                    "http://" + host + ":"
+                            + container.getMappedPort(8080) + path
+            );
+        }
+
+        @Override
+        public void close() {
+            container.stop();
+        }
+    }
+
+    private record Policy(
+            String perIpRate,
+            String perIpBurst,
+            String globalRate,
+            String globalBurst
+    ) {
+
+        static Policy highCapacity() {
+            return new Policy("100r/s", "100", "100r/s", "100");
+        }
+
+        static Policy productionDefaults() {
+            return new Policy("5r/m", "2", "30r/m", "10");
+        }
+
+        static Policy perIpLimited() {
+            return new Policy("1r/m", "2", "100r/s", "100");
+        }
+
+        static Policy globallyLimited() {
+            return new Policy("100r/s", "100", "1r/m", "1");
+        }
+    }
+}
