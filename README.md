@@ -24,6 +24,8 @@ On Linux or macOS:
 ```
 
 The verification suite starts a disposable MySQL 8.0 container. Docker must be running.
+CI also runs `bash .github/scripts/test-compose-deployment.sh` to build the
+runtime image and verify the private network boundary end to end.
 
 ## Run locally
 
@@ -65,8 +67,10 @@ curl.exe -H "Host: api.lyrashop.local" http://127.0.0.1:8080/nginx-health
 The default edge binding is `127.0.0.1:8080`. The backend runs as UID/GID
 `10001` with a read-only root filesystem, and its Actuator readiness endpoint
 is bound only to `127.0.0.1:8081` inside the backend container. MySQL data is
-stored in the `mysql_data` named volume. Remove that volume only when a full
-local database reset is intended:
+stored in the `mysql_data` named volume. Keep both MySQL secret files stable
+for the lifetime of that volume. Changing a file does not rotate credentials in
+an initialized database; use `ALTER USER` or deliberately reset the local
+volume. Remove the volume only when a full local database reset is intended:
 
 ```powershell
 docker compose down

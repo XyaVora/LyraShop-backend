@@ -109,6 +109,7 @@ class NginxRegistrationIngressTests {
                             "rate=5r/m",
                             "rate=30r/m",
                             "client_max_body_size 8192;",
+                            "location = /actuator",
                             "location ^~ /actuator/",
                             "$request_method",
                             "$uri",
@@ -194,6 +195,13 @@ class NginxRegistrationIngressTests {
             );
             assertThat(blockedManagementEndpoint.statusCode()).isEqualTo(404);
             assertThat(blockedManagementEndpoint.headers().firstValue("X-Upstream-Id")).isEmpty();
+            assertThat(send(
+                    gateway,
+                    "GET",
+                    "/actuator",
+                    HttpRequest.BodyPublishers.noBody(),
+                    Map.of()
+            ).statusCode()).isEqualTo(404);
 
             assertThat(sendRegistration(gateway, REGISTRATION_PATH + "/", Map.of()).statusCode())
                     .isEqualTo(404);

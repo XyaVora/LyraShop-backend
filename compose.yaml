@@ -138,6 +138,6 @@ volumes:
 
 secrets:
   mysql_password:
-    file: ${MYSQL_PASSWORD_SECRET_FILE:-./deploy/secrets/mysql_password.txt}
+    file: ${MYSQL_PASSWORD_SECRET_FILE:?Set MYSQL_PASSWORD_SECRET_FILE to a secret file}
   mysql_root_password:
-    file: ${MYSQL_ROOT_PASSWORD_SECRET_FILE:-./deploy/secrets/mysql_root_password.txt}
+    file: ${MYSQL_ROOT_PASSWORD_SECRET_FILE:?Set MYSQL_ROOT_PASSWORD_SECRET_FILE to a secret file}

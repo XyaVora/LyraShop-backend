@@ -41,3 +41,17 @@ jobs:
 
       - name: Verify
         run: ./mvnw --batch-mode --no-transfer-progress clean verify
+
+  deployment-smoke:
+    name: Docker deployment smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Verify private deployment boundary
+        run: bash .github/scripts/test-compose-deployment.sh

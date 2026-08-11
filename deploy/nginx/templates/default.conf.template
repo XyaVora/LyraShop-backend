@@ -73,6 +73,10 @@ server {
         return 204;
     }
 
+    location = /actuator {
+        return 404;
+    }
+
     location ^~ /actuator/ {
         return 404;
     }
