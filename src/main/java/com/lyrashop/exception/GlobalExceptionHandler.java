@@ -126,6 +126,23 @@ public class GlobalExceptionHandler {
                 ));
     }
 
+    @ExceptionHandler(InvalidCredentialsException.class)
+    ResponseEntity<ApiErrorResponse> handleInvalidCredentials(
+            InvalidCredentialsException exception,
+            HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .header(HttpHeaders.CACHE_CONTROL, "no-store")
+                .header(HttpHeaders.PRAGMA, "no-cache")
+                .contentType(MediaType.APPLICATION_PROBLEM_JSON)
+                .body(ApiErrorResponse.of(
+                        HttpStatus.UNAUTHORIZED.value(),
+                        "INVALID_CREDENTIALS",
+                        "Invalid email or password",
+                        request.getRequestURI()
+                ));
+    }
+
     @ExceptionHandler(Exception.class)
     ResponseEntity<ApiErrorResponse> handleUnexpected(
             Exception exception,

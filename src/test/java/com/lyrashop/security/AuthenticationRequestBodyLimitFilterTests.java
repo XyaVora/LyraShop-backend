@@ -21,6 +21,7 @@ import jakarta.servlet.http.HttpServletRequest;
 class AuthenticationRequestBodyLimitFilterTests {
 
     private static final String REGISTER_PATH = "/api/v1/auth/register";
+    private static final String LOGIN_PATH = "/api/v1/auth/login";
     private static final int BODY_LIMIT = 16;
 
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
@@ -51,7 +52,7 @@ class AuthenticationRequestBodyLimitFilterTests {
                 chainCalled.set(true)
         );
 
-        assertPayloadTooLarge(response);
+        assertPayloadTooLarge(response, REGISTER_PATH);
         assertThat(chainCalled).isFalse();
     }
 
@@ -71,7 +72,7 @@ class AuthenticationRequestBodyLimitFilterTests {
                 chainCalled.set(true)
         );
 
-        assertPayloadTooLarge(response);
+        assertPayloadTooLarge(response, REGISTER_PATH);
         assertThat(chainCalled).isFalse();
     }
 
@@ -87,7 +88,20 @@ class AuthenticationRequestBodyLimitFilterTests {
         });
 
         assertThat(body.length).isGreaterThan(BODY_LIMIT);
-        assertPayloadTooLarge(response);
+        assertPayloadTooLarge(response, REGISTER_PATH);
+    }
+
+    @Test
+    void appliesTheSameRawBodyLimitToLogin() throws Exception {
+        byte[] body = "x".repeat(BODY_LIMIT + 1).getBytes(StandardCharsets.UTF_8);
+        MockHttpServletRequest request = request(body, body.length, LOGIN_PATH);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, (servletRequest, servletResponse) -> {
+            throw new AssertionError("oversized login body must not reach the chain");
+        });
+
+        assertPayloadTooLarge(response, LOGIN_PATH);
     }
 
     @Test
@@ -120,22 +134,33 @@ class AuthenticationRequestBodyLimitFilterTests {
         assertBypassesFilter(otherMethod);
 
         MockHttpServletRequest otherPath = request(oversizedBody, oversizedBody.length);
-        otherPath.setRequestURI("/api/v1/auth/login");
-        otherPath.setServletPath("/api/v1/auth/login");
+        otherPath.setRequestURI("/api/v1/auth/refresh");
+        otherPath.setServletPath("/api/v1/auth/refresh");
         assertBypassesFilter(otherPath);
     }
 
-    private void assertPayloadTooLarge(MockHttpServletResponse response) throws Exception {
+    private void assertPayloadTooLarge(
+            MockHttpServletResponse response,
+            String expectedPath
+    ) throws Exception {
         assertThat(response.getStatus()).isEqualTo(413);
         assertThat(MediaType.parseMediaType(response.getContentType())
                 .isCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON)).isTrue();
         var body = objectMapper.readTree(response.getContentAsByteArray());
         assertThat(body.path("status").asInt()).isEqualTo(413);
         assertThat(body.path("code").asText()).isEqualTo("PAYLOAD_TOO_LARGE");
-        assertThat(body.path("path").asText()).isEqualTo(REGISTER_PATH);
+        assertThat(body.path("path").asText()).isEqualTo(expectedPath);
     }
 
     private static MockHttpServletRequest request(byte[] body, long declaredLength) {
+        return request(body, declaredLength, REGISTER_PATH);
+    }
+
+    private static MockHttpServletRequest request(
+            byte[] body,
+            long declaredLength,
+            String path
+    ) {
         MockHttpServletRequest request = new MockHttpServletRequest() {
             @Override
             public int getContentLength() {
@@ -147,7 +172,7 @@ class AuthenticationRequestBodyLimitFilterTests {
                 return declaredLength;
             }
         };
-        configure(request, "POST", REGISTER_PATH);
+        configure(request, "POST", path);
         request.setContent(body);
         return request;
     }

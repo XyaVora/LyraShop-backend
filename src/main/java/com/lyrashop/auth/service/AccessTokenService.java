@@ -38,6 +38,9 @@ public class AccessTokenService {
         Objects.requireNonNull(user, "user");
         Objects.requireNonNull(user.getId(), "persisted user id");
         Objects.requireNonNull(user.getRole(), "user role");
+        if (!user.isActive()) {
+            throw new IllegalStateException("Access tokens cannot be issued for inactive users");
+        }
 
         Instant issuedAt = clock.instant();
         Instant expiresAt = issuedAt.plus(properties.accessTokenTtl());

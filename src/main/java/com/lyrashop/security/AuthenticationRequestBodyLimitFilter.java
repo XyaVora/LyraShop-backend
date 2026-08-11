@@ -11,6 +11,8 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.security.web.util.matcher.OrRequestMatcher;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import com.lyrashop.exception.ApiErrorResponse;
@@ -26,9 +28,12 @@ import jakarta.servlet.http.HttpServletResponse;
 
 public class AuthenticationRequestBodyLimitFilter extends OncePerRequestFilter {
 
-    private static final PathPatternRequestMatcher REGISTER_REQUEST =
+    private static final RequestMatcher AUTHENTICATION_REQUEST = new OrRequestMatcher(
             PathPatternRequestMatcher.withDefaults()
-                    .matcher(HttpMethod.POST, "/api/v1/auth/register");
+                    .matcher(HttpMethod.POST, "/api/v1/auth/register"),
+            PathPatternRequestMatcher.withDefaults()
+                    .matcher(HttpMethod.POST, "/api/v1/auth/login")
+    );
 
     private final int maxRequestBodyBytes;
     private final ApiErrorWriter errorWriter;
@@ -43,7 +48,7 @@ public class AuthenticationRequestBodyLimitFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        return !REGISTER_REQUEST.matches(request);
+        return !AUTHENTICATION_REQUEST.matches(request);
     }
 
     @Override

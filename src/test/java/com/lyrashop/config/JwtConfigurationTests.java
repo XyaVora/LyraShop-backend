@@ -55,6 +55,7 @@ class JwtConfigurationTests {
         User user = mock(User.class);
         when(user.getId()).thenReturn(userId);
         when(user.getRole()).thenReturn(UserRole.CUSTOMER);
+        when(user.isActive()).thenReturn(true);
 
         var first = tokenService.issue(user);
         var second = tokenService.issue(user);
@@ -62,6 +63,12 @@ class JwtConfigurationTests {
 
         assertThat(first.expiresInSeconds()).isEqualTo(900);
         assertThat(first.value()).isNotEqualTo(second.value());
+        assertThat(first.toString())
+                .contains("[REDACTED]")
+                .doesNotContain(first.value());
+        assertThat(PROPERTIES.toString())
+                .contains("[REDACTED]")
+                .doesNotContain(VALID_SECRET);
         assertThat(token.getHeaders())
                 .containsEntry("alg", "HS256")
                 .containsEntry("typ", "JWT");
@@ -194,6 +201,22 @@ class JwtConfigurationTests {
         }
     }
 
+    @Test
+    void refusesToIssueAccessTokensForInactiveUsers() {
+        Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
+        SecretKey secretKey = configuration.jwtSecretKey(PROPERTIES);
+        AccessTokenService tokenService =
+                new AccessTokenService(configuration.jwtEncoder(secretKey), PROPERTIES, clock);
+        User user = mock(User.class);
+        when(user.getId()).thenReturn(UUID.randomUUID());
+        when(user.getRole()).thenReturn(UserRole.CUSTOMER);
+        when(user.isActive()).thenReturn(false);
+
+        assertThatThrownBy(() -> tokenService.issue(user))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("inactive users");
+    }
+
     private static JwtProperties propertiesWithTtl(Duration ttl) {
         return new JwtProperties(
                 PROPERTIES.issuer(),
@@ -207,6 +230,7 @@ class JwtConfigurationTests {
         User user = mock(User.class);
         when(user.getId()).thenReturn(UUID.randomUUID());
         when(user.getRole()).thenReturn(role);
+        when(user.isActive()).thenReturn(true);
         return user;
     }
 }

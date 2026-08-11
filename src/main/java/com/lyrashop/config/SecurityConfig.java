@@ -56,7 +56,9 @@ public class SecurityConfig {
                 )
                 .csrf(csrf -> csrf.ignoringRequestMatchers(
                         PathPatternRequestMatcher.withDefaults()
-                                .matcher(HttpMethod.POST, "/api/v1/auth/register")
+                                .matcher(HttpMethod.POST, "/api/v1/auth/register"),
+                        PathPatternRequestMatcher.withDefaults()
+                                .matcher(HttpMethod.POST, "/api/v1/auth/login")
                 ))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .requestCache(cache -> cache.disable())
@@ -75,6 +77,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers(EndpointRequest.to(HealthEndpoint.class)).permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/register").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/auth/login").permitAll()
                         .anyRequest().denyAll()
                 );
 
@@ -101,6 +104,7 @@ public class SecurityConfig {
                 HttpHeaders.AUTHORIZATION,
                 HttpHeaders.CONTENT_TYPE
         ));
+        configuration.setExposedHeaders(List.of(HttpHeaders.RETRY_AFTER));
         configuration.setAllowCredentials(false);
         configuration.setMaxAge(Duration.ofHours(1));
 

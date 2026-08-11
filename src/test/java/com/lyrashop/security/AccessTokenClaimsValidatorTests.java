@@ -53,6 +53,24 @@ class AccessTokenClaimsValidatorTests {
         ));
         assertInvalid(token(
                 UUID.randomUUID().toString(),
+                List.of(AccessTokenClaimsValidator.ACCESS_TOKEN_USE),
+                List.of(UserRole.CUSTOMER.name()),
+                ISSUED_AT.plus(Duration.ofMinutes(15))
+        ));
+        assertInvalid(token(
+                UUID.randomUUID().toString(),
+                AccessTokenClaimsValidator.ACCESS_TOKEN_USE,
+                UserRole.CUSTOMER.name(),
+                ISSUED_AT.plus(Duration.ofMinutes(15))
+        ));
+        assertInvalid(token(
+                UUID.randomUUID().toString(),
+                AccessTokenClaimsValidator.ACCESS_TOKEN_USE,
+                List.of(1),
+                ISSUED_AT.plus(Duration.ofMinutes(15))
+        ));
+        assertInvalid(token(
+                UUID.randomUUID().toString(),
                 AccessTokenClaimsValidator.ACCESS_TOKEN_USE,
                 List.of(UserRole.CUSTOMER.name()),
                 ISSUED_AT.plus(Duration.ofMinutes(30)).plusNanos(1)
@@ -61,8 +79,8 @@ class AccessTokenClaimsValidatorTests {
 
     private static Jwt token(
             String subject,
-            String tokenUse,
-            List<String> roles,
+            Object tokenUse,
+            Object roles,
             Instant expiresAt
     ) {
         return Jwt.withTokenValue("token")

@@ -43,6 +43,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
@@ -53,9 +54,11 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.lyrashop.auth.entity.RefreshSession;
 import com.lyrashop.auth.entity.RefreshTokenDigest;
 import com.lyrashop.auth.repository.RefreshSessionRepository;
+import com.lyrashop.security.AccessTokenClaimsValidator;
 import com.lyrashop.user.entity.User;
 import com.lyrashop.user.entity.UserRole;
 import com.lyrashop.user.repository.UserRepository;
@@ -119,6 +122,9 @@ class LyraShopApplicationTests {
 
     @Autowired
     private PasswordEncoder passwordEncoder;
+
+    @Autowired
+    private JwtDecoder jwtDecoder;
 
     @Test
     void registersAnonymousCustomerWithoutChangingPasswordMaterial() throws Exception {
@@ -317,13 +323,196 @@ class LyraShopApplicationTests {
     }
 
     @Test
+    void logsInAnActiveCustomerAndReturnsOnlyAValidatedAccessToken() throws Exception {
+        String submittedEmail = " Login." + UUID.randomUUID() + "@Example.COM ";
+        String canonicalEmail = submittedEmail.strip().toLowerCase(Locale.ROOT);
+        String rawPassword = "  login password stays opaque  ";
+        User user = userRepository.saveAndFlush(User.createCustomer(
+                canonicalEmail,
+                passwordEncoder.encode(rawPassword),
+                "Login Customer",
+                null
+        ));
+
+        var result = mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(loginJson(submittedEmail, rawPassword)))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+                .andExpect(header().string(HttpHeaders.PRAGMA, "no-cache"))
+                .andExpect(header().doesNotExist(HttpHeaders.SET_COOKIE))
+                .andExpect(cookie().doesNotExist("JSESSIONID"))
+                .andExpect(jsonPath("$.accessToken").isNotEmpty())
+                .andExpect(jsonPath("$.tokenType").value("Bearer"))
+                .andExpect(jsonPath("$.expiresIn").value(900))
+                .andExpect(jsonPath("$.refreshToken").doesNotExist())
+                .andExpect(jsonPath("$.password").doesNotExist())
+                .andReturn();
+
+        var response = objectMapper.readTree(result.getResponse().getContentAsByteArray());
+        String accessToken = response.path("accessToken").asText();
+        var decoded = jwtDecoder.decode(accessToken);
+        assertThat(decoded.getSubject()).isEqualTo(user.getId().toString());
+        assertThat(decoded.getClaimAsString(
+                AccessTokenClaimsValidator.TOKEN_USE_CLAIM
+        )).isEqualTo(AccessTokenClaimsValidator.ACCESS_TOKEN_USE);
+        assertThat(decoded.getClaimAsStringList(
+                AccessTokenClaimsValidator.ROLES_CLAIM
+        )).containsExactly(UserRole.CUSTOMER.name());
+        assertThat(decoded.getClaims()).doesNotContainKeys(
+                "email",
+                "fullName",
+                "phone",
+                "password",
+                "passwordHash"
+        );
+        assertThat(result.getResponse().getContentAsString())
+                .doesNotContain(rawPassword, user.getPasswordHash(), canonicalEmail);
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM refresh_sessions WHERE user_id = ?",
+                Integer.class,
+                uuidBytes(user.getId())
+        )).isZero();
+    }
+
+    @Test
+    void returnsTheSameSafeFailureForUnknownWrongAndInactiveCredentials() throws Exception {
+        String rawPassword = "generic login password";
+        String activeEmail = "active-login-" + UUID.randomUUID() + "@example.com";
+        String inactiveEmail = "inactive-login-" + UUID.randomUUID() + "@example.com";
+        userRepository.saveAndFlush(User.createCustomer(
+                activeEmail,
+                passwordEncoder.encode(rawPassword),
+                "Active Login",
+                null
+        ));
+        User inactiveUser = userRepository.saveAndFlush(User.createCustomer(
+                inactiveEmail,
+                passwordEncoder.encode(rawPassword),
+                "Inactive Login",
+                null
+        ));
+        inactiveUser.deactivate();
+        userRepository.saveAndFlush(inactiveUser);
+
+        List<Map.Entry<String, String>> attempts = List.of(
+                Map.entry("missing-" + UUID.randomUUID() + "@example.com", rawPassword),
+                Map.entry(activeEmail, "wrong login password"),
+                Map.entry(inactiveEmail, rawPassword)
+        );
+        ObjectNode expectedProblemContract = null;
+        for (Map.Entry<String, String> attempt : attempts) {
+            var result = mockMvc.perform(post("/api/v1/auth/login")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(loginJson(attempt.getKey(), attempt.getValue())))
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(content().contentTypeCompatibleWith(
+                            MediaType.APPLICATION_PROBLEM_JSON
+                    ))
+                    .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+                    .andExpect(header().string(HttpHeaders.PRAGMA, "no-cache"))
+                    .andExpect(jsonPath("$.status").value(401))
+                    .andExpect(jsonPath("$.code").value("INVALID_CREDENTIALS"))
+                    .andExpect(jsonPath("$.message").value("Invalid email or password"))
+                    .andExpect(jsonPath("$.path").value("/api/v1/auth/login"))
+                    .andExpect(jsonPath("$.fieldErrors").isMap())
+                    .andExpect(jsonPath("$.accessToken").doesNotExist())
+                    .andReturn();
+
+            assertThat(result.getResponse().getContentAsString())
+                    .doesNotContain(
+                            attempt.getKey(),
+                            attempt.getValue(),
+                            inactiveUser.getPasswordHash()
+                    );
+            ObjectNode problem = (ObjectNode) objectMapper.readTree(
+                    result.getResponse().getContentAsByteArray()
+            );
+            problem.remove("timestamp");
+            if (expectedProblemContract == null) {
+                expectedProblemContract = problem;
+            } else {
+                assertThat(problem).isEqualTo(expectedProblemContract);
+            }
+        }
+    }
+
+    @Test
+    void rejectsUnsafeLoginBodiesBeforeAuthentication() throws Exception {
+        Map<String, Object> unexpectedField = new LinkedHashMap<>();
+        unexpectedField.put("email", "login@example.com");
+        unexpectedField.put("password", "valid login password");
+        unexpectedField.put("role", "ADMIN");
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(unexpectedField)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("MALFORMED_REQUEST"));
+
+        String oversizedPassword = "x".repeat(8_300);
+        var oversized = mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(loginJson("oversized-login@example.com", oversizedPassword)))
+                .andExpect(status().isPayloadTooLarge())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+                .andExpect(jsonPath("$.code").value("PAYLOAD_TOO_LARGE"))
+                .andExpect(jsonPath("$.path").value("/api/v1/auth/login"))
+                .andReturn();
+
+        assertThat(oversized.getResponse().getContentAsString())
+                .doesNotContain(oversizedPassword, "oversized-login@example.com");
+    }
+
+    @Test
+    void authenticatesValidBearerTokensWhileKeepingUnknownRoutesDenied() throws Exception {
+        String email = "bearer-login-" + UUID.randomUUID() + "@example.com";
+        String password = "bearer token password";
+        userRepository.saveAndFlush(User.createCustomer(
+                email,
+                passwordEncoder.encode(password),
+                "Bearer Customer",
+                null
+        ));
+        var login = mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(loginJson(email, password)))
+                .andExpect(status().isOk())
+                .andReturn();
+        String accessToken = objectMapper.readTree(login.getResponse().getContentAsByteArray())
+                .path("accessToken")
+                .asText();
+
+        mockMvc.perform(get("/api/v1/private"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().string(HttpHeaders.WWW_AUTHENTICATE, "Bearer"))
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+
+        mockMvc.perform(get("/api/v1/private")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer invalid-token"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().string(HttpHeaders.WWW_AUTHENTICATE, "Bearer"))
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+
+        mockMvc.perform(get("/api/v1/private")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+                .andExpect(status().isForbidden())
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    }
+
+    @Test
     void keepsRegistrationPublicAndAllOtherRoutesFailClosed() throws Exception {
         mockMvc.perform(get("/api/v1/auth/register"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
                 .andExpect(jsonPath("$.code").value("UNAUTHORIZED"))
                 .andExpect(header().doesNotExist(HttpHeaders.LOCATION))
-                .andExpect(header().doesNotExist(HttpHeaders.WWW_AUTHENTICATE));
+                .andExpect(header().string(HttpHeaders.WWW_AUTHENTICATE, "Bearer"));
 
         mockMvc.perform(post("/api/v1/private")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -758,6 +947,13 @@ class LyraShopApplicationTests {
             String phone
     ) throws Exception {
         return objectMapper.writeValueAsString(registrationPayload(email, password, fullName, phone));
+    }
+
+    private String loginJson(String email, String password) throws Exception {
+        return objectMapper.writeValueAsString(Map.of(
+                "email", email,
+                "password", password
+        ));
     }
 
     private static Map<String, Object> registrationPayload(

@@ -17,7 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.lyrashop.auth.dto.RegisterRequest;
 import com.lyrashop.exception.AuthenticationCapacityExceededException;
 import com.lyrashop.exception.EmailAlreadyRegisteredException;
-import com.lyrashop.security.BoundedPasswordHasher;
+import com.lyrashop.security.BoundedPasswordOperations;
 import com.lyrashop.user.entity.User;
 import com.lyrashop.user.repository.UserRepository;
 
@@ -31,9 +31,10 @@ class RegistrationServiceTests {
     );
 
     private final UserRepository userRepository = mock(UserRepository.class);
-    private final BoundedPasswordHasher passwordHasher = mock(BoundedPasswordHasher.class);
+    private final BoundedPasswordOperations passwordOperations =
+            mock(BoundedPasswordOperations.class);
     private final RegistrationService registrationService =
-            new RegistrationService(userRepository, passwordHasher);
+            new RegistrationService(userRepository, passwordOperations);
 
     @Test
     void mapsOnlyTheEmailUniqueConstraintToAConflict() {
@@ -41,7 +42,7 @@ class RegistrationServiceTests {
                 ConstraintViolationException.ConstraintKind.UNIQUE,
                 "uk_users_email"
         );
-        when(passwordHasher.hash(REQUEST.password())).thenReturn("encoded-password");
+        when(passwordOperations.hash(REQUEST.password())).thenReturn("encoded-password");
         when(userRepository.existsByEmail(REQUEST.email())).thenReturn(false);
         when(userRepository.saveAndFlush(any(User.class))).thenThrow(databaseFailure);
 
@@ -56,7 +57,7 @@ class RegistrationServiceTests {
                 ConstraintViolationException.ConstraintKind.OTHER,
                 "chk_users_role"
         );
-        when(passwordHasher.hash(REQUEST.password())).thenReturn("encoded-password");
+        when(passwordOperations.hash(REQUEST.password())).thenReturn("encoded-password");
         when(userRepository.existsByEmail(REQUEST.email())).thenReturn(false);
         when(userRepository.saveAndFlush(any(User.class))).thenThrow(databaseFailure);
 
@@ -68,7 +69,7 @@ class RegistrationServiceTests {
     void doesNotReachPersistenceWhenHashingCapacityIsExhausted() {
         AuthenticationCapacityExceededException capacityFailure =
                 new AuthenticationCapacityExceededException(3);
-        when(passwordHasher.hash(REQUEST.password())).thenThrow(capacityFailure);
+        when(passwordOperations.hash(REQUEST.password())).thenThrow(capacityFailure);
 
         assertThatThrownBy(() -> registrationService.register(REQUEST))
                 .isSameAs(capacityFailure);

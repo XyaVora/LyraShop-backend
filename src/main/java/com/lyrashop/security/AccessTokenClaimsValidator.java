@@ -2,7 +2,6 @@ package com.lyrashop.security;
 
 import java.time.Duration;
 import java.time.Instant;
-import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
@@ -44,7 +43,7 @@ public final class AccessTokenClaimsValidator implements OAuth2TokenValidator<Jw
                 || Duration.between(issuedAt, expiresAt).compareTo(maximumLifetime) > 0
                 || isBlank(token.getId())
                 || !hasUuidSubject(token)
-                || !ACCESS_TOKEN_USE.equals(token.getClaimAsString(TOKEN_USE_CLAIM))
+                || !ACCESS_TOKEN_USE.equals(token.getClaims().get(TOKEN_USE_CLAIM))
                 || !hasAllowedRoles(token)) {
             return INVALID;
         }
@@ -61,10 +60,13 @@ public final class AccessTokenClaimsValidator implements OAuth2TokenValidator<Jw
     }
 
     private static boolean hasAllowedRoles(Jwt token) {
-        List<String> roles = token.getClaimAsStringList(ROLES_CLAIM);
-        return roles != null
-                && roles.size() == 1
-                && ALLOWED_ROLES.contains(roles.getFirst());
+        Object rawRoles = token.getClaims().get(ROLES_CLAIM);
+        if (!(rawRoles instanceof java.util.List<?> roles)
+                || roles.size() != 1
+                || !(roles.getFirst() instanceof String role)) {
+            return false;
+        }
+        return ALLOWED_ROLES.contains(role);
     }
 
     private static boolean isBlank(String value) {

@@ -33,4 +33,12 @@ public record JwtProperties(
     private static String stripNullable(String value) {
         return value == null ? null : value.strip();
     }
+
+    @Override
+    public String toString() {
+        return "JwtProperties[issuer=" + issuer
+                + ", audience=" + audience
+                + ", accessTokenTtl=" + accessTokenTtl
+                + ", secretBase64=[REDACTED]]";
+    }
 }
