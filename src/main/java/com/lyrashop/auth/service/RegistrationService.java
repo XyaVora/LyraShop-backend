@@ -8,14 +8,13 @@ import java.util.Set;
 
 import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
 
 import com.lyrashop.auth.dto.RegisterRequest;
 import com.lyrashop.exception.EmailAlreadyRegisteredException;
 import com.lyrashop.exception.InvalidRegistrationDataException;
+import com.lyrashop.security.BoundedPasswordHasher;
 import com.lyrashop.user.entity.User;
 import com.lyrashop.user.repository.UserRepository;
 
@@ -30,14 +29,13 @@ public class RegistrationService {
     private static final int MYSQL_DUPLICATE_KEY_ERROR = 1062;
 
     private final UserRepository userRepository;
-    private final PasswordEncoder passwordEncoder;
+    private final BoundedPasswordHasher passwordHasher;
 
-    public RegistrationService(UserRepository userRepository, PasswordEncoder passwordEncoder) {
+    public RegistrationService(UserRepository userRepository, BoundedPasswordHasher passwordHasher) {
         this.userRepository = userRepository;
-        this.passwordEncoder = passwordEncoder;
+        this.passwordHasher = passwordHasher;
     }
 
-    @Transactional
     public RegistrationResult register(@NotNull @Valid RegisterRequest request) {
         String canonicalEmail;
         try {
@@ -46,7 +44,7 @@ public class RegistrationService {
             throw new InvalidRegistrationDataException("email", exception);
         }
 
-        String passwordHash = passwordEncoder.encode(request.password());
+        String passwordHash = passwordHasher.hash(request.password());
         if (userRepository.existsByEmail(canonicalEmail)) {
             throw new EmailAlreadyRegisteredException();
         }

@@ -1,8 +1,10 @@
 package com.lyrashop.auth.service;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.sql.SQLException;
@@ -10,10 +12,12 @@ import java.sql.SQLException;
 import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.lyrashop.auth.dto.RegisterRequest;
+import com.lyrashop.exception.AuthenticationCapacityExceededException;
 import com.lyrashop.exception.EmailAlreadyRegisteredException;
+import com.lyrashop.security.BoundedPasswordHasher;
 import com.lyrashop.user.entity.User;
 import com.lyrashop.user.repository.UserRepository;
 
@@ -27,9 +31,9 @@ class RegistrationServiceTests {
     );
 
     private final UserRepository userRepository = mock(UserRepository.class);
-    private final PasswordEncoder passwordEncoder = mock(PasswordEncoder.class);
+    private final BoundedPasswordHasher passwordHasher = mock(BoundedPasswordHasher.class);
     private final RegistrationService registrationService =
-            new RegistrationService(userRepository, passwordEncoder);
+            new RegistrationService(userRepository, passwordHasher);
 
     @Test
     void mapsOnlyTheEmailUniqueConstraintToAConflict() {
@@ -37,7 +41,7 @@ class RegistrationServiceTests {
                 ConstraintViolationException.ConstraintKind.UNIQUE,
                 "uk_users_email"
         );
-        when(passwordEncoder.encode(REQUEST.password())).thenReturn("encoded-password");
+        when(passwordHasher.hash(REQUEST.password())).thenReturn("encoded-password");
         when(userRepository.existsByEmail(REQUEST.email())).thenReturn(false);
         when(userRepository.saveAndFlush(any(User.class))).thenThrow(databaseFailure);
 
@@ -52,12 +56,32 @@ class RegistrationServiceTests {
                 ConstraintViolationException.ConstraintKind.OTHER,
                 "chk_users_role"
         );
-        when(passwordEncoder.encode(REQUEST.password())).thenReturn("encoded-password");
+        when(passwordHasher.hash(REQUEST.password())).thenReturn("encoded-password");
         when(userRepository.existsByEmail(REQUEST.email())).thenReturn(false);
         when(userRepository.saveAndFlush(any(User.class))).thenThrow(databaseFailure);
 
         assertThatThrownBy(() -> registrationService.register(REQUEST))
                 .isSameAs(databaseFailure);
+    }
+
+    @Test
+    void doesNotReachPersistenceWhenHashingCapacityIsExhausted() {
+        AuthenticationCapacityExceededException capacityFailure =
+                new AuthenticationCapacityExceededException(3);
+        when(passwordHasher.hash(REQUEST.password())).thenThrow(capacityFailure);
+
+        assertThatThrownBy(() -> registrationService.register(REQUEST))
+                .isSameAs(capacityFailure);
+        verifyNoInteractions(userRepository);
+    }
+
+    @Test
+    void keepsPasswordHashingOutsideTheRegistrationTransactionBoundary() throws Exception {
+        var registerMethod =
+                RegistrationService.class.getDeclaredMethod("register", RegisterRequest.class);
+
+        assertThat(RegistrationService.class.isAnnotationPresent(Transactional.class)).isFalse();
+        assertThat(registerMethod.isAnnotationPresent(Transactional.class)).isFalse();
     }
 
     private static DataIntegrityViolationException databaseFailure(

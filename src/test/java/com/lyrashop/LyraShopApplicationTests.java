@@ -375,6 +375,36 @@ class LyraShopApplicationTests {
     }
 
     @Test
+    void rejectsOversizedRegistrationBeforeJsonParsingAndPersistence() throws Exception {
+        String email = "oversized-registration-" + UUID.randomUUID() + "@example.com";
+        String rejectedPassword = "x".repeat(8_300);
+
+        var result = mockMvc.perform(post("/api/v1/auth/register")
+                        .header(HttpHeaders.ORIGIN, "https://shop.example.test")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(registrationJson(
+                                email,
+                                rejectedPassword,
+                                "Oversized Registration",
+                                null
+                        )))
+                .andExpect(status().isPayloadTooLarge())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(header().string(
+                        HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN,
+                        "https://shop.example.test"
+                ))
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+                .andExpect(jsonPath("$.code").value("PAYLOAD_TOO_LARGE"))
+                .andExpect(jsonPath("$.path").value("/api/v1/auth/register"))
+                .andReturn();
+
+        assertThat(userRepository.findByEmail(email)).isEmpty();
+        assertThat(result.getResponse().getContentAsString())
+                .doesNotContain(email, rejectedPassword);
+    }
+
+    @Test
     void startsWithValidatedIdentityMigration() {
         var currentMigration = flyway.info().current();
 

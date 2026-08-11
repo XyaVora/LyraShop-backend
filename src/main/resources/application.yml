@@ -36,6 +36,10 @@ app:
   security:
     cors:
       allowed-origins: ${CORS_ALLOWED_ORIGINS:}
+    auth:
+      max-request-body-bytes: ${AUTH_MAX_REQUEST_BODY_BYTES:8192}
+      max-concurrent-password-hashes: ${AUTH_MAX_CONCURRENT_PASSWORD_HASHES:2}
+      retry-after-seconds: ${AUTH_RETRY_AFTER_SECONDS:1}
 
 logging:
   level:
