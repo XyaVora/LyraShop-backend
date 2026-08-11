@@ -35,6 +35,9 @@ Set the required database environment variables before starting the application:
 $env:DB_URL="jdbc:mysql://localhost:3306/lyrashop_db?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true"
 $env:DB_USERNAME="lyrashop"
 $env:DB_PASSWORD="replace-with-a-local-password"
+$jwtKey = New-Object byte[] 32
+[System.Security.Cryptography.RandomNumberGenerator]::Fill($jwtKey)
+$env:JWT_SECRET_BASE64=[Convert]::ToBase64String($jwtKey)
 .\mvnw.cmd spring-boot:run
 ```
 
@@ -54,6 +57,10 @@ New-Item -ItemType Directory -Force deploy/secrets | Out-Null
     Set-Content -NoNewline deploy/secrets/mysql_password.txt
 [guid]::NewGuid().ToString("N") |
     Set-Content -NoNewline deploy/secrets/mysql_root_password.txt
+$jwtKey = New-Object byte[] 32
+[System.Security.Cryptography.RandomNumberGenerator]::Fill($jwtKey)
+[Convert]::ToBase64String($jwtKey) |
+    Set-Content -NoNewline deploy/secrets/jwt_secret_base64.txt
 ```
 
 Validate and start the stack:
@@ -76,6 +83,11 @@ volume. Remove the volume only when a full local database reset is intended:
 docker compose down
 docker compose down --volumes
 ```
+
+JWT access tokens use HS256 with a Base64-encoded key of at least 32 random
+bytes. Compose mounts that key from `JWT_SECRET_BASE64_SECRET_FILE`; it is not
+stored in the backend container environment. The default access-token lifetime
+is 15 minutes and may only be configured between 15 and 30 minutes.
 
 This Compose file closes direct host-port access to the backend and database,
 but it is not the complete public production deployment. Keep the loopback

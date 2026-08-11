@@ -18,6 +18,7 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.DelegatingPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 import org.springframework.web.cors.CorsConfiguration;
@@ -41,7 +42,8 @@ public class SecurityConfig {
             HttpSecurity http,
             RestSecurityErrorHandler securityErrorHandler,
             ApiErrorWriter errorWriter,
-            AuthProtectionProperties authProtectionProperties
+            AuthProtectionProperties authProtectionProperties,
+            JwtAuthenticationConverter jwtAuthenticationConverter
     ) throws Exception {
         http
                 .cors(Customizer.withDefaults())
@@ -61,6 +63,11 @@ public class SecurityConfig {
                 .formLogin(form -> form.disable())
                 .httpBasic(basic -> basic.disable())
                 .logout(logout -> logout.disable())
+                .oauth2ResourceServer(resourceServer -> resourceServer
+                        .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter))
+                        .authenticationEntryPoint(securityErrorHandler)
+                        .accessDeniedHandler(securityErrorHandler)
+                )
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint(securityErrorHandler)
                         .accessDeniedHandler(securityErrorHandler)
@@ -89,7 +96,11 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(properties.allowedOrigins());
         configuration.setAllowedMethods(List.of(HttpMethod.POST.name()));
-        configuration.setAllowedHeaders(List.of(HttpHeaders.ACCEPT, HttpHeaders.CONTENT_TYPE));
+        configuration.setAllowedHeaders(List.of(
+                HttpHeaders.ACCEPT,
+                HttpHeaders.AUTHORIZATION,
+                HttpHeaders.CONTENT_TYPE
+        ));
         configuration.setAllowCredentials(false);
         configuration.setMaxAge(Duration.ofHours(1));
 

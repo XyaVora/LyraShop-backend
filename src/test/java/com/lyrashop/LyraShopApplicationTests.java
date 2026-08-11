@@ -65,7 +65,11 @@ import jakarta.persistence.EntityManager;
 @Testcontainers
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.MOCK,
-        properties = "app.security.cors.allowed-origins=https://shop.example.test"
+        properties = {
+                "app.security.cors.allowed-origins=https://shop.example.test",
+                "app.security.jwt.secret-base64="
+                        + "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+        }
 )
 @AutoConfigureMockMvc
 class LyraShopApplicationTests {

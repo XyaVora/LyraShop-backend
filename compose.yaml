@@ -47,9 +47,14 @@ services:
       AUTH_MAX_REQUEST_BODY_BYTES: ${AUTH_MAX_REQUEST_BODY_BYTES:-8192}
       AUTH_MAX_CONCURRENT_PASSWORD_HASHES: ${AUTH_MAX_CONCURRENT_PASSWORD_HASHES:-2}
       AUTH_RETRY_AFTER_SECONDS: ${AUTH_RETRY_AFTER_SECONDS:-1}
+      JWT_ISSUER: ${JWT_ISSUER:-https://api.lyrashop.local}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-lyrashop-api}
+      JWT_ACCESS_TOKEN_TTL: ${JWT_ACCESS_TOKEN_TTL:-15m}
     secrets:
       - source: mysql_password
         target: DB_PASSWORD
+      - source: jwt_secret_base64
+        target: JWT_SECRET_BASE64
     depends_on:
       mysql:
         condition: service_healthy
@@ -141,3 +146,5 @@ secrets:
     file: ${MYSQL_PASSWORD_SECRET_FILE:?Set MYSQL_PASSWORD_SECRET_FILE to a secret file}
   mysql_root_password:
     file: ${MYSQL_ROOT_PASSWORD_SECRET_FILE:?Set MYSQL_ROOT_PASSWORD_SECRET_FILE to a secret file}
+  jwt_secret_base64:
+    file: ${JWT_SECRET_BASE64_SECRET_FILE:?Set JWT_SECRET_BASE64_SECRET_FILE to a secret file}

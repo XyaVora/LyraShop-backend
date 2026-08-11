@@ -10,6 +10,7 @@ project="$(printf '%s' "$project" | tr '[:upper:]_' '[:lower:]-' | tr -cd 'a-z0-
 secret_dir="target/${project}-secrets"
 app_secret="${secret_dir}/mysql_password.txt"
 root_secret="${secret_dir}/mysql_root_password.txt"
+jwt_secret="${secret_dir}/jwt_secret_base64.txt"
 request_body="${secret_dir}/register-request.json"
 response_body="${secret_dir}/register-response.json"
 error_body="${secret_dir}/error-response.json"
@@ -17,6 +18,7 @@ error_body="${secret_dir}/error-response.json"
 export MYSQL_USER=lyrashop
 export MYSQL_PASSWORD_SECRET_FILE="./$app_secret"
 export MYSQL_ROOT_PASSWORD_SECRET_FILE="./$root_secret"
+export JWT_SECRET_BASE64_SECRET_FILE="./$jwt_secret"
 export EDGE_BIND_ADDRESS=127.0.0.1
 export EDGE_PORT="${COMPOSE_SMOKE_EDGE_PORT:-$((20000 + $$ % 30000))}"
 export API_SERVER_NAME=api.lyrashop.test
@@ -39,7 +41,7 @@ cleanup() {
     fi
     "${compose[@]}" down --volumes --remove-orphans || cleanup_failed=1
     docker image rm "${project}-backend:latest" >/dev/null 2>&1 || true
-    rm -f "$app_secret" "$root_secret" "$request_body" "$response_body" "$error_body" ||
+    rm -f "$app_secret" "$root_secret" "$jwt_secret" "$request_body" "$response_body" "$error_body" ||
         cleanup_failed=1
     rmdir "$secret_dir" 2>/dev/null || cleanup_failed=1
     trap - EXIT
@@ -56,7 +58,8 @@ mkdir -p "$secret_dir"
 chmod 700 "$secret_dir"
 printf '%s' "smoke-app-${project}-7f14" > "$app_secret"
 printf '%s' "smoke-root-${project}-c82a" > "$root_secret"
-chmod 0444 "$app_secret" "$root_secret"
+printf '%s' "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=" > "$jwt_secret"
+chmod 0444 "$app_secret" "$root_secret" "$jwt_secret"
 
 fail() {
     printf 'Deployment smoke failed: %s\n' "$*" >&2
@@ -124,6 +127,9 @@ edge_internal="$(docker network inspect "${project}_edge" --format '{{.Internal}
 backend_environment="$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$backend_id")"
 if grep -q '^DB_PASSWORD=' <<<"$backend_environment"; then
     fail "database password must not be stored in backend environment"
+fi
+if grep -q '^JWT_SECRET_BASE64=' <<<"$backend_environment"; then
+    fail "JWT signing secret must not be stored in backend environment"
 fi
 
 if "${compose[@]}" exec -T nginx wget -q -T 3 -O /dev/null http://backend:8081/actuator/health/readiness 2>/dev/null; then
