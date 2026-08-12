@@ -13,6 +13,8 @@ public interface CategoryRepository extends JpaRepository<Category, Long> {
 
     Optional<Category> findByIdAndActiveTrue(Long id);
 
+    Optional<Category> findBySlugAndActiveTrue(String slug);
+
     boolean existsByIdAndActiveTrue(Long id);
 
     boolean existsBySlug(String slug);

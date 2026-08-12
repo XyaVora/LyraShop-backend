@@ -15,6 +15,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.math.BigDecimal;
 import java.nio.ByteBuffer;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -70,6 +71,8 @@ import com.lyrashop.auth.service.IssuedAuthentication;
 import com.lyrashop.auth.service.RefreshTokenService;
 import com.lyrashop.catalog.category.entity.Category;
 import com.lyrashop.catalog.category.repository.CategoryRepository;
+import com.lyrashop.catalog.product.entity.Product;
+import com.lyrashop.catalog.product.repository.ProductRepository;
 import com.lyrashop.config.SecurityConfig;
 import com.lyrashop.exception.InvalidRefreshTokenException;
 import com.lyrashop.security.AccessTokenClaimsValidator;
@@ -134,6 +137,9 @@ class LyraShopApplicationTests {
 
     @Autowired
     private CategoryRepository categoryRepository;
+
+    @Autowired
+    private ProductRepository productRepository;
 
     @Autowired
     private PlatformTransactionManager transactionManager;
@@ -1052,14 +1058,251 @@ class LyraShopApplicationTests {
     }
 
     @Test
+    @Transactional
+    void persistsProductsWithBinaryUuidsAndCategoryReferences() {
+        String suffix = UUID.randomUUID().toString();
+        Category category = categoryRepository.saveAndFlush(Category.create(
+                "Persistence Category " + suffix,
+                "persistence-category-" + suffix,
+                null,
+                null
+        ));
+        Product product = productRepository.saveAndFlush(Product.create(
+                "  Persistence Product " + suffix + "  ",
+                "PERSISTENCE-PRODUCT-" + suffix.toUpperCase(Locale.ROOT),
+                "  Stored product description  ",
+                new BigDecimal("199.90"),
+                category.getId()
+        ));
+        UUID productId = product.getId();
+        entityManager.clear();
+
+        Product stored = productRepository.findById(productId).orElseThrow();
+        assertThat(stored.getId()).isEqualTo(productId);
+        assertThat(stored.getName()).isEqualTo("Persistence Product " + suffix);
+        assertThat(stored.getSlug()).isEqualTo("persistence-product-" + suffix);
+        assertThat(stored.getDescription()).isEqualTo("Stored product description");
+        assertThat(stored.getBasePrice()).isEqualByComparingTo("199.90");
+        assertThat(stored.getCategoryId()).isEqualTo(category.getId());
+        assertThat(stored.isActive()).isTrue();
+        assertThat(stored.getVersion()).isZero();
+        assertThat(stored.getCreatedAt()).isNotNull();
+        assertThat(stored.getUpdatedAt()).isNotNull();
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT OCTET_LENGTH(id) FROM products WHERE slug = ?",
+                Integer.class,
+                stored.getSlug()
+        )).isEqualTo(16);
+    }
+
+    @Test
+    void exposesOnlyActiveProductsAndActiveDetailsToAnonymousClients() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        Category category = categoryRepository.saveAndFlush(Category.create(
+                "Public Product Category " + suffix,
+                "public-product-category-" + suffix,
+                null,
+                null
+        ));
+
+        Product visible = productRepository.saveAndFlush(Product.create(
+                "Visible Product " + suffix,
+                "visible-product-" + suffix,
+                "Public catalog item",
+                new BigDecimal("49.99"),
+                category.getId()
+        ));
+
+        Product hidden = Product.create(
+                "Hidden Product " + suffix,
+                "hidden-product-" + suffix,
+                "Inactive catalog item",
+                new BigDecimal("39.99"),
+                category.getId()
+        );
+        hidden.deactivate();
+        hidden = productRepository.saveAndFlush(hidden);
+
+        mockMvc.perform(get("/api/v1/products")
+                        .param("keyword", suffix)
+                        .param("sort", "name,asc"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.content[0].id").value(visible.getId().toString()))
+                .andExpect(jsonPath("$.content[0].slug").value(visible.getSlug()))
+                .andExpect(jsonPath("$.content[0].basePrice").value(49.99))
+                .andExpect(jsonPath("$.content[0].categoryId").value(category.getId()))
+                .andExpect(jsonPath("$.content[0].active").doesNotExist())
+                .andExpect(jsonPath("$.totalElements").value(1));
+
+        mockMvc.perform(get("/api/v1/products/{id}", visible.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(visible.getId().toString()))
+                .andExpect(jsonPath("$.name").value(visible.getName()))
+                .andExpect(jsonPath("$.description").value("Public catalog item"))
+                .andExpect(jsonPath("$.active").doesNotExist());
+
+        mockMvc.perform(get("/api/v1/products/{id}", hidden.getId()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("PRODUCT_NOT_FOUND"));
+
+
+        UUID missingId = UUID.randomUUID();
+        mockMvc.perform(get("/api/v1/products/{id}", missingId))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("PRODUCT_NOT_FOUND"))
+                .andExpect(jsonPath("$.path").value("/api/v1/products/" + missingId));
+
+        mockMvc.perform(get("/api/v1/products/not-a-uuid"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("PRODUCT_NOT_FOUND"));
+    }
+
+    @Test
+    void hidesProductsWhenTheirCategoryIsInactive() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        Category category = categoryRepository.saveAndFlush(Category.create(
+                "Inactive Parent Category " + suffix,
+                "inactive-parent-category-" + suffix,
+                null,
+                null
+        ));
+        Product product = productRepository.saveAndFlush(Product.create(
+                "Orphaned Public Product " + suffix,
+                "orphaned-public-product-" + suffix,
+                null,
+                new BigDecimal("15.00"),
+                category.getId()
+        ));
+        category.deactivate();
+        categoryRepository.saveAndFlush(category);
+
+        mockMvc.perform(get("/api/v1/products").param("keyword", suffix))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content").isEmpty())
+                .andExpect(jsonPath("$.totalElements").value(0));
+
+        mockMvc.perform(get("/api/v1/products/{id}", product.getId()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("PRODUCT_NOT_FOUND"));
+    }
+
+    @Test
+    void filtersSortsAndPaginatesThePublicProductCatalog() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        Category selectedCategory = categoryRepository.saveAndFlush(Category.create(
+                "Selected Product Category " + suffix,
+                "selected-product-category-" + suffix,
+                null,
+                null
+        ));
+        Category otherCategory = categoryRepository.saveAndFlush(Category.create(
+                "Other Product Category " + suffix,
+                "other-product-category-" + suffix,
+                null,
+                null
+        ));
+        Product lowerPrice = productRepository.saveAndFlush(Product.create(
+                "Catalog Match Budget " + suffix,
+                "catalog-match-budget-" + suffix,
+                null,
+                new BigDecimal("20.00"),
+                selectedCategory.getId()
+        ));
+        Product higherPrice = productRepository.saveAndFlush(Product.create(
+                "Catalog Match Premium " + suffix,
+                "catalog-match-premium-" + suffix,
+                null,
+                new BigDecimal("30.00"),
+                selectedCategory.getId()
+        ));
+        productRepository.saveAndFlush(Product.create(
+                "Catalog Match Too Cheap " + suffix,
+                "catalog-match-too-cheap-" + suffix,
+                null,
+                new BigDecimal("10.00"),
+                selectedCategory.getId()
+        ));
+        productRepository.saveAndFlush(Product.create(
+                "Catalog Match Other Category " + suffix,
+                "catalog-match-other-category-" + suffix,
+                null,
+                new BigDecimal("25.00"),
+                otherCategory.getId()
+        ));
+
+        mockMvc.perform(get("/api/v1/products")
+                        .param("keyword", "CATALOG MATCH")
+                        .param("category", selectedCategory.getSlug().toUpperCase(Locale.ROOT))
+                        .param("minPrice", "15.00")
+                        .param("maxPrice", "30.00")
+                        .param("sort", "price,desc")
+                        .param("page", "0")
+                        .param("size", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.content[0].id").value(higherPrice.getId().toString()))
+                .andExpect(jsonPath("$.content[0].basePrice").value(30.0))
+                .andExpect(jsonPath("$.page").value(0))
+                .andExpect(jsonPath("$.size").value(1))
+                .andExpect(jsonPath("$.totalElements").value(2))
+                .andExpect(jsonPath("$.totalPages").value(2));
+
+        mockMvc.perform(get("/api/v1/products")
+                        .param("keyword", "catalog match")
+                        .param("category", selectedCategory.getSlug())
+                        .param("minPrice", "15")
+                        .param("maxPrice", "30")
+                        .param("sort", "price,desc")
+                        .param("page", "1")
+                        .param("size", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.content[0].id").value(lowerPrice.getId().toString()))
+                .andExpect(jsonPath("$.page").value(1));
+    }
+
+    @Test
+    void rejectsInvalidPublicProductQueriesWithoutLeakingDetails() throws Exception {
+        mockMvc.perform(get("/api/v1/products").param("page", "-1"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.code").value("INVALID_PRODUCT_QUERY"))
+                .andExpect(jsonPath("$.path").value("/api/v1/products"));
+
+        mockMvc.perform(get("/api/v1/products").param("size", "101"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_PRODUCT_QUERY"));
+
+        mockMvc.perform(get("/api/v1/products").param("sort", "id,asc"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_PRODUCT_QUERY"));
+
+        mockMvc.perform(get("/api/v1/products").param("minPrice", "1e2"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_PRODUCT_QUERY"));
+
+        mockMvc.perform(get("/api/v1/products").param("maxPrice", "10000000000"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_PRODUCT_QUERY"));
+
+        mockMvc.perform(get("/api/v1/products")
+                        .param("minPrice", "20.00")
+                        .param("maxPrice", "10.00"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_PRODUCT_QUERY"));
+    }
+
+    @Test
     void startsWithValidatedIdentityMigration() {
         var currentMigration = flyway.info().current();
 
         assertThat(MYSQL.isRunning()).isTrue();
         assertThat(jdbcTemplate.queryForObject("SELECT 1", Integer.class)).isEqualTo(1);
         assertThat(currentMigration).isNotNull();
-        assertThat(currentMigration.getVersion()).isEqualTo(MigrationVersion.fromVersion("2"));
-        assertThat(currentMigration.getDescription()).isEqualTo("create categories");
+        assertThat(currentMigration.getVersion()).isEqualTo(MigrationVersion.fromVersion("3"));
+        assertThat(currentMigration.getDescription()).isEqualTo("create products");
         assertThat(currentMigration.getState()).isEqualTo(MigrationState.SUCCESS);
         assertThat(flyway.validateWithResult().validationSuccessful).isTrue();
         assertThat(flyway.migrate().migrationsExecuted).isZero();
@@ -1077,12 +1320,13 @@ class LyraShopApplicationTests {
                       'users',
                       'refresh_sessions',
                       'categories',
+                      'products',
                       'flyway_schema_history'
                   )
                 """,
                 Integer.class
         );
-        assertThat(expectedTables).isEqualTo(4);
+        assertThat(expectedTables).isEqualTo(5);
     }
 
     @Test

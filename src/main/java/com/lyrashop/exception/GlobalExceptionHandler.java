@@ -16,6 +16,8 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import com.lyrashop.auth.service.RefreshCookieService;
+import com.lyrashop.catalog.product.service.ProductNotFoundException;
+import com.lyrashop.catalog.product.service.ProductQueryException;
 
 import jakarta.servlet.http.HttpServletRequest;
 
@@ -116,6 +118,37 @@ public class GlobalExceptionHandler {
         );
     }
 
+    @ExceptionHandler(ProductNotFoundException.class)
+    ResponseEntity<ApiErrorResponse> handleProductNotFound(
+            ProductNotFoundException exception,
+            HttpServletRequest request
+    ) {
+        return problem(
+                HttpStatus.NOT_FOUND,
+                ApiErrorResponse.of(
+                        HttpStatus.NOT_FOUND.value(),
+                        "PRODUCT_NOT_FOUND",
+                        "Product was not found",
+                        request.getRequestURI()
+                )
+        );
+    }
+
+    @ExceptionHandler(ProductQueryException.class)
+    ResponseEntity<ApiErrorResponse> handleProductQuery(
+            ProductQueryException exception,
+            HttpServletRequest request
+    ) {
+        return problem(
+                HttpStatus.BAD_REQUEST,
+                ApiErrorResponse.of(
+                        HttpStatus.BAD_REQUEST.value(),
+                        "INVALID_PRODUCT_QUERY",
+                        "Product query parameters are invalid",
+                        request.getRequestURI()
+                )
+        );
+    }
     @ExceptionHandler(CategoryNotFoundException.class)
     ResponseEntity<ApiErrorResponse> handleCategoryNotFound(
             CategoryNotFoundException exception,
