@@ -247,6 +247,12 @@ server {
         proxy_pass http://lyrashop_backend;
     }
 
+    location = /api/v1/admin/categories {
+        client_max_body_size ${BUSINESS_MAX_REQUEST_BODY_BYTES};
+        proxy_request_buffering on;
+        proxy_pass http://lyrashop_backend;
+    }
+
     location @logout_rate_limited {
         internal;
         default_type application/problem+json;
