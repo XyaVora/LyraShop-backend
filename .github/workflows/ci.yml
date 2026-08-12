@@ -31,11 +31,11 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: bash .github/scripts/check-flyway-migrations.sh "$BASE_SHA"
 
-      - name: Set up Java 21
+      - name: Set up Java 25
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: "25"
           cache: maven
           cache-dependency-path: pom.xml
 

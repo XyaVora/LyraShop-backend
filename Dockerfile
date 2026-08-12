@@ -1,4 +1,4 @@
-FROM eclipse-temurin:21-jdk-alpine@sha256:1ff763083f2993d57d0bf374ab10bb3e2cb873af6c13a04458ebbd3e0337dc76 AS build
+FROM eclipse-temurin:25-jdk-alpine@sha256:3852a237086a660157560241b45ba32a547adcd93fadccaea108438bd523e053 AS build
 
 WORKDIR /workspace
 
@@ -12,7 +12,7 @@ RUN ./mvnw --batch-mode --no-transfer-progress clean package -Dmaven.test.skip=t
     && test "$#" -eq 1 \
     && cp "$1" /workspace/app.jar
 
-FROM eclipse-temurin:21-jre-alpine@sha256:3f08b13888f595cc49edabea7250ba69499ba25602b267da591720769400e08c AS runtime
+FROM eclipse-temurin:25-jre-alpine@sha256:cdd967aa55f1d0175ebe57245e4450292e6e6dd185dce73f93580598934128aa AS runtime
 
 RUN addgroup -S -g 10001 lyrashop \
     && adduser -S -D -H -u 10001 -G lyrashop lyrashop

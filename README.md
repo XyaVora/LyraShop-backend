@@ -4,7 +4,7 @@ Spring Boot REST API for the LyraShop e-commerce platform.
 
 ## Requirements
 
-- Java 21
+- Java 25
 - Docker with a running Linux container engine
 
 Maven is provided through the repository wrapper.
