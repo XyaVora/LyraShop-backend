@@ -9,6 +9,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 
 import com.lyrashop.auth.service.RefreshCookieService;
@@ -82,5 +83,43 @@ class SecurityConfigTests {
     void usesTheRawCsrfTokenRequestHandler() {
         assertThat(securityConfig.csrfTokenRequestHandler())
                 .isExactlyInstanceOf(CsrfTokenRequestAttributeHandler.class);
+    }
+
+    @Test
+    void requiresCsrfOnlyForCookieBackedAuthenticationMutations() {
+        assertThat(SecurityConfig.COOKIE_CSRF_REQUEST.matches(request(
+                HttpMethod.POST,
+                "/api/v1/auth/refresh"
+        ))).isTrue();
+        assertThat(SecurityConfig.COOKIE_CSRF_REQUEST.matches(request(
+                HttpMethod.POST,
+                "/api/v1/auth/logout"
+        ))).isTrue();
+        assertThat(SecurityConfig.COOKIE_CSRF_REQUEST.matches(request(
+                HttpMethod.POST,
+                "/api/v1/admin/categories"
+        ))).isFalse();
+        assertThat(SecurityConfig.COOKIE_CSRF_REQUEST.matches(request(
+                HttpMethod.POST,
+                "/api/v1/auth/login"
+        ))).isFalse();
+        assertThat(SecurityConfig.COOKIE_CSRF_REQUEST.matches(request(
+                HttpMethod.GET,
+                "/api/v1/auth/refresh"
+        ))).isFalse();
+    }
+
+    @Test
+    void enablesPrePostMethodAuthorization() {
+        EnableMethodSecurity annotation = SecurityConfig.class.getAnnotation(
+                EnableMethodSecurity.class
+        );
+
+        assertThat(annotation).isNotNull();
+        assertThat(annotation.prePostEnabled()).isTrue();
+    }
+
+    private static MockHttpServletRequest request(HttpMethod method, String path) {
+        return new MockHttpServletRequest(method.name(), path);
     }
 }
