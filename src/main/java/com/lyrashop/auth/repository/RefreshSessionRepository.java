@@ -1,5 +1,6 @@
 package com.lyrashop.auth.repository;
 
+import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -19,6 +20,32 @@ public interface RefreshSessionRepository extends JpaRepository<RefreshSession, 
     default Optional<RefreshSession> findByTokenDigest(RefreshTokenDigest tokenDigest) {
         return findByTokenHash(tokenDigest.bytes());
     }
+
+    @Query("""
+            select new com.lyrashop.auth.repository.RefreshSessionSnapshot(
+                session.id,
+                session.user.id,
+                session.familyId,
+                session.expiresAt,
+                session.consumedAt,
+                session.revokedAt,
+                session.user.active
+            )
+            from RefreshSession session
+            where session.tokenHash = :tokenHash
+            """)
+    Optional<RefreshSessionSnapshot> findSnapshotByTokenHash(
+            @Param("tokenHash") byte[] tokenHash
+    );
+
+    default Optional<RefreshSessionSnapshot> findSnapshotByTokenDigest(
+            RefreshTokenDigest tokenDigest
+    ) {
+        return findSnapshotByTokenHash(tokenDigest.bytes());
+    }
+
+    @Query(value = "SELECT CURRENT_TIMESTAMP(6)", nativeQuery = true)
+    Instant currentDatabaseTime();
 
     @Query("""
             select session
@@ -63,6 +90,21 @@ public interface RefreshSessionRepository extends JpaRepository<RefreshSession, 
               and session.revokedAt is null
             """)
     int revokeFamilyIfActive(@Param("familyId") UUID familyId);
+
+    @Transactional
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            update RefreshSession session
+            set session.revokedAt = CURRENT_TIMESTAMP,
+                session.version = session.version + 1
+            where session.familyId = :familyId
+              and session.user.id = :userId
+              and session.revokedAt is null
+            """)
+    int revokeFamilyForUserIfActive(
+            @Param("familyId") UUID familyId,
+            @Param("userId") UUID userId
+    );
 
     @Transactional
     @Modifying(clearAutomatically = true, flushAutomatically = true)

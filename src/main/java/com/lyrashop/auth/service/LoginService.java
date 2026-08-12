@@ -26,21 +26,21 @@ public class LoginService {
     private final UserRepository userRepository;
     private final BoundedPasswordOperations passwordOperations;
     private final DummyPasswordHash dummyPasswordHash;
-    private final AccessTokenService accessTokenService;
+    private final RefreshTokenService refreshTokenService;
 
     public LoginService(
             UserRepository userRepository,
             BoundedPasswordOperations passwordOperations,
             DummyPasswordHash dummyPasswordHash,
-            AccessTokenService accessTokenService
+            RefreshTokenService refreshTokenService
     ) {
         this.userRepository = userRepository;
         this.passwordOperations = passwordOperations;
         this.dummyPasswordHash = dummyPasswordHash;
-        this.accessTokenService = accessTokenService;
+        this.refreshTokenService = refreshTokenService;
     }
 
-    public IssuedAccessToken login(@NotNull @Valid LoginRequest request) {
+    public IssuedAuthentication login(@NotNull @Valid LoginRequest request) {
         String canonicalEmail;
         try {
             canonicalEmail = User.canonicalizeEmail(request.email());
@@ -66,7 +66,7 @@ public class LoginService {
                 || !user.isActive()) {
             throw new InvalidCredentialsException();
         }
-        return accessTokenService.issue(user);
+        return refreshTokenService.issueInitial(user.getId());
     }
 
     private boolean matches(String candidate, String encodedPassword, User user) {

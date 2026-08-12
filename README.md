@@ -46,13 +46,26 @@ The application listens on port `8080` by default. Set `SERVER_PORT` to override
 ## Authentication API
 
 - `POST /api/v1/auth/register` creates an active `CUSTOMER` account.
-- `POST /api/v1/auth/login` returns a short-lived HS256 access token for an
-  active account.
+- `POST /api/v1/auth/login` returns a short-lived HS256 access token and starts
+  a seven-day refresh-token family for an active account.
+- `GET /api/v1/auth/csrf` bootstraps the CSRF header after a browser reload.
+- `POST /api/v1/auth/refresh` rotates the refresh token and returns a new
+  access token.
+- `POST /api/v1/auth/logout` requires the bearer access token, revokes the
+  current refresh-token family, and clears the authentication cookies.
 
 Login responses contain only `accessToken`, `tokenType`, and `expiresIn`
 and are marked `no-store`. Passwords are treated as opaque input and are never
-trimmed or returned. Refresh-token issuance, rotation, and logout are separate
-follow-up slices and are not implemented by this access-token endpoint.
+trimmed or returned. Raw refresh tokens are never returned in JSON or stored in
+the database. They are carried only in the host-only
+`__Secure-LyraShopRefresh` cookie with `HttpOnly`, `Secure`, `SameSite=Strict`,
+and `Path=/api/v1/auth`.
+
+Browser clients must use credentialed requests. Keep the `X-XSRF-TOKEN` value
+from the login response header in memory and send it on refresh and logout.
+After a page reload, call `GET /api/v1/auth/csrf` with credentials enabled to
+obtain the header again before refreshing. The CSRF cookie is also host-only,
+`HttpOnly`, `Secure`, and `SameSite=Strict`; frontend code does not read it.
 
 ## Run with Docker Compose
 
@@ -99,6 +112,8 @@ JWT access tokens use HS256 with a Base64-encoded key of at least 32 random
 bytes. Compose mounts that key from `JWT_SECRET_BASE64_SECRET_FILE`; it is not
 stored in the backend container environment. The default access-token lifetime
 is 15 minutes and may only be configured between 15 and 30 minutes.
+Refresh-token families have a fixed seven-day lifetime by default, configured
+with `REFRESH_TOKEN_TTL`. Rotation does not extend that absolute expiry.
 
 This Compose file closes direct host-port access to the backend and database,
 but it is not the complete public production deployment. Keep the loopback
@@ -119,7 +134,8 @@ enforce shared authentication rate limits and request-size caps.
 The production ingress template is
 `deploy/nginx/templates/default.conf.template`. The official Nginx
 container renders it through `envsubst`; set
-`NGINX_ENVSUBST_FILTER=^(API_|AUTH_|BACKEND_|LOGIN_|REGISTRATION_)` so Nginx
+`NGINX_ENVSUBST_FILTER=^(API_|AUTH_|BACKEND_|LOGIN_|LOGOUT_|REFRESH_|REGISTRATION_)`
+so Nginx
 runtime variables remain intact. Required deployment values are documented in
 `.env.example`. `REGISTRATION_CORS_ALLOWED_ORIGIN` must also be present in
 the backend `CORS_ALLOWED_ORIGINS` list. The shared
@@ -127,9 +143,12 @@ the backend `CORS_ALLOWED_ORIGINS` list. The shared
 aligned for registration; `LOGIN_MAX_REQUEST_BODY_BYTES` may apply a stricter
 edge cap to the smaller login payload.
 
-The ingress applies independent per-IP and global quotas to registration and
-login, caps both raw request bodies, overwrites client-supplied forwarding
-headers, and returns stable problem responses for `429` and `413`.
+The ingress applies independent per-IP and global quotas to registration,
+login, refresh, and logout; caps all authentication request bodies; overwrites
+client-supplied forwarding headers; and returns stable problem responses for
+`429` and `413`. Refresh and logout bodies are capped at 1024 bytes. Edge error
+responses preserve credentialed CORS semantics without logging authentication
+cookies or CSRF headers.
 Independent zones prevent a flood against one authentication flow from
 exhausting the other. Rate-limit state is shared by all workers and backend
 replicas behind one Nginx instance, but resets when that instance restarts and

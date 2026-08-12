@@ -7,6 +7,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.access.AccessDeniedHandler;
+import org.springframework.security.web.csrf.CsrfException;
 import org.springframework.stereotype.Component;
 
 import com.lyrashop.exception.ApiErrorResponse;
@@ -48,6 +49,15 @@ public class RestSecurityErrorHandler implements AuthenticationEntryPoint, Acces
             org.springframework.security.access.AccessDeniedException exception
     ) throws IOException, ServletException {
         response.setHeader(HttpHeaders.CACHE_CONTROL, "no-store");
+        if (exception instanceof CsrfException) {
+            errorWriter.write(response, ApiErrorResponse.of(
+                    HttpStatus.FORBIDDEN.value(),
+                    "CSRF_REQUIRED",
+                    "A valid CSRF token is required",
+                    request.getRequestURI()
+            ));
+            return;
+        }
         errorWriter.write(response, ApiErrorResponse.of(
                 HttpStatus.FORBIDDEN.value(),
                 "FORBIDDEN",

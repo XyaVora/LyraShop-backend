@@ -3,13 +3,13 @@ package com.lyrashop.auth.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.util.Optional;
+import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,31 +33,31 @@ class LoginServiceTests {
     private final BoundedPasswordOperations passwordOperations =
             mock(BoundedPasswordOperations.class);
     private final DummyPasswordHash dummyPasswordHash = mock(DummyPasswordHash.class);
-    private final AccessTokenService accessTokenService = mock(AccessTokenService.class);
+    private final RefreshTokenService refreshTokenService = mock(RefreshTokenService.class);
     private final LoginService loginService = new LoginService(
             userRepository,
             passwordOperations,
             dummyPasswordHash,
-            accessTokenService
+            refreshTokenService
     );
 
     @Test
     void canonicalizesEmailWithoutChangingPasswordMaterial() {
         User user = activeUser();
-        IssuedAccessToken issuedToken = new IssuedAccessToken("access-token", 900);
+        IssuedAuthentication issuedAuthentication = issuedAuthentication();
         when(userRepository.findByEmail("customer@example.com")).thenReturn(Optional.of(user));
         when(passwordOperations.matches(RAW_PASSWORD, STORED_HASH)).thenReturn(true);
-        when(accessTokenService.issue(user)).thenReturn(issuedToken);
+        when(refreshTokenService.issueInitial(user.getId())).thenReturn(issuedAuthentication);
 
-        IssuedAccessToken result = loginService.login(new LoginRequest(
+        IssuedAuthentication result = loginService.login(new LoginRequest(
                 " CUSTOMER@EXAMPLE.COM ",
                 RAW_PASSWORD
         ));
 
-        assertThat(result).isSameAs(issuedToken);
+        assertThat(result).isSameAs(issuedAuthentication);
         verify(passwordOperations).matches(RAW_PASSWORD, STORED_HASH);
         verifyNoMoreInteractions(passwordOperations);
-        verify(accessTokenService).issue(user);
+        verify(refreshTokenService).issueInitial(user.getId());
     }
 
     @Test
@@ -72,7 +72,7 @@ class LoginServiceTests {
 
         verify(passwordOperations).matches(RAW_PASSWORD, DUMMY_HASH);
         verifyNoMoreInteractions(passwordOperations);
-        verifyNoInteractions(accessTokenService);
+        verifyNoInteractions(refreshTokenService);
     }
 
     @Test
@@ -87,7 +87,7 @@ class LoginServiceTests {
 
         verify(passwordOperations).matches(RAW_PASSWORD, STORED_HASH);
         verifyNoMoreInteractions(passwordOperations);
-        verify(accessTokenService, never()).issue(user);
+        verifyNoInteractions(refreshTokenService);
     }
 
     @Test
@@ -104,7 +104,7 @@ class LoginServiceTests {
 
         verify(passwordOperations).matches(RAW_PASSWORD, STORED_HASH);
         verifyNoMoreInteractions(passwordOperations);
-        verify(accessTokenService, never()).issue(user);
+        verifyNoInteractions(refreshTokenService);
     }
 
     @Test
@@ -120,7 +120,7 @@ class LoginServiceTests {
 
         verify(passwordOperations).matches(SAFE_INVALID_PASSWORD, STORED_HASH);
         verifyNoMoreInteractions(passwordOperations);
-        verify(accessTokenService, never()).issue(user);
+        verifyNoInteractions(refreshTokenService);
     }
 
     @Test
@@ -132,7 +132,7 @@ class LoginServiceTests {
                 new LoginRequest(" ", RAW_PASSWORD)
         ));
 
-        verifyNoInteractions(userRepository, accessTokenService);
+        verifyNoInteractions(userRepository, refreshTokenService);
         verify(passwordOperations).matches(SAFE_INVALID_PASSWORD, DUMMY_HASH);
         verifyNoMoreInteractions(passwordOperations);
     }
@@ -150,7 +150,7 @@ class LoginServiceTests {
 
         verify(passwordOperations).matches(RAW_PASSWORD, STORED_HASH);
         verifyNoMoreInteractions(passwordOperations);
-        verify(accessTokenService, never()).issue(user);
+        verifyNoInteractions(refreshTokenService);
     }
 
     @Test
@@ -167,7 +167,7 @@ class LoginServiceTests {
 
         verify(passwordOperations).matches(RAW_PASSWORD, DUMMY_HASH);
         verifyNoMoreInteractions(passwordOperations);
-        verifyNoInteractions(accessTokenService);
+        verifyNoInteractions(refreshTokenService);
     }
 
     @Test
@@ -180,9 +180,21 @@ class LoginServiceTests {
 
     private static User activeUser() {
         User user = mock(User.class);
+        when(user.getId()).thenReturn(UUID.randomUUID());
         when(user.getPasswordHash()).thenReturn(STORED_HASH);
         when(user.isActive()).thenReturn(true);
         return user;
+    }
+
+    private static IssuedAuthentication issuedAuthentication() {
+        return new IssuedAuthentication(
+                new IssuedAccessToken("access-token", 900),
+                new IssuedRefreshToken(
+                        "A".repeat(43),
+                        java.time.Instant.parse("2030-01-08T00:00:00Z"),
+                        604800
+                )
+        );
     }
 
     private static void assertInvalidCredentials(Runnable login) {
