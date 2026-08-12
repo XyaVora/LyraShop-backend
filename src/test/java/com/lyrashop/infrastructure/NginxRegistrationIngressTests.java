@@ -57,6 +57,8 @@ class NginxRegistrationIngressTests {
     private static final String ALLOWED_ORIGIN = "https://shop.example.test";
     private static final String REGISTRATION_PATH = "/api/v1/auth/register";
     private static final String LOGIN_PATH = "/api/v1/auth/login";
+    private static final String REFRESH_PATH = "/api/v1/auth/refresh";
+    private static final String LOGOUT_PATH = "/api/v1/auth/logout";
     private static final Network NETWORK = Network.newNetwork();
     private static final GenericContainer<?> UPSTREAM_A = upstream("a");
     private static final GenericContainer<?> UPSTREAM_B = upstream("b");
@@ -103,7 +105,11 @@ class NginxRegistrationIngressTests {
                             "${BACKEND_",
                             "${CORS_",
                             "${LOGIN_",
-                            "${REGISTRATION_"
+                            "${LOGOUT_",
+                            "${REFRESH_",
+                            "${REGISTRATION_",
+                            "$http_cookie",
+                            "$http_x_xsrf_token"
                     )
                     .contains(
                             "resolver 127.0.0.11 valid=10s ipv6=off;",
@@ -112,9 +118,16 @@ class NginxRegistrationIngressTests {
                             "rate=30r/m",
                             "zone=login_per_ip",
                             "zone=login_global",
+                            "zone=refresh_per_ip",
+                            "zone=refresh_global",
+                            "zone=logout_per_ip",
+                            "zone=logout_global",
                             "client_max_body_size 8192;",
                             "client_max_body_size 4096;",
+                            "client_max_body_size 1024;",
                             "location = /api/v1/auth/login",
+                            "location = /api/v1/auth/refresh",
+                            "location = /api/v1/auth/logout",
                             "location = /actuator",
                             "location ^~ /actuator/",
                             "$request_method",
@@ -221,6 +234,14 @@ class NginxRegistrationIngressTests {
                     .isEqualTo(404);
             assertThat(sendRegistration(gateway, LOGIN_PATH + "%3Bscope=other", Map.of()).statusCode())
                     .isEqualTo(404);
+            for (String path : List.of(REFRESH_PATH, LOGOUT_PATH)) {
+                assertThat(sendRegistration(gateway, path + "/", Map.of()).statusCode())
+                        .isEqualTo(404);
+                assertThat(sendRegistration(gateway, path + ";scope=other", Map.of()).statusCode())
+                        .isEqualTo(404);
+                assertThat(sendRegistration(gateway, path + "%3Bscope=other", Map.of()).statusCode())
+                        .isEqualTo(404);
+            }
 
             assertThat(List.of(
                     sendRegistration(gateway, REGISTRATION_PATH, Map.of()).statusCode(),
@@ -274,6 +295,47 @@ class NginxRegistrationIngressTests {
                     .extracting(HttpResponse::statusCode)
                     .containsExactly(200, 200, 200, 429);
             assertLoginRateLimit(attempts.getLast(), ALLOWED_ORIGIN);
+        }
+    }
+
+    @Test
+    void appliesIndependentQuotasToOnlyNormalizedRefreshAndLogoutPosts() throws Exception {
+        try (Gateway gateway = startGateway(Policy.sessionPerIpLimited())) {
+            for (String path : List.of(REFRESH_PATH, LOGOUT_PATH)) {
+                assertThat(send(
+                        gateway,
+                        "OPTIONS",
+                        path,
+                        HttpRequest.BodyPublishers.noBody(),
+                        Map.of(
+                                "Origin", ALLOWED_ORIGIN,
+                                "Access-Control-Request-Method", "POST",
+                                "Access-Control-Request-Headers", "content-type,x-xsrf-token"
+                        )
+                ).statusCode()).isEqualTo(200);
+                assertThat(send(
+                        gateway,
+                        "GET",
+                        path,
+                        HttpRequest.BodyPublishers.noBody(),
+                        Map.of()
+                ).statusCode()).isEqualTo(200);
+
+                List<HttpResponse<String>> attempts = List.of(
+                        sendRegistration(gateway, path, Map.of()),
+                        sendRegistration(gateway, path.replace("/api/", "/api//"), Map.of()),
+                        sendRegistration(gateway, path + "?attempt=query", Map.of()),
+                        sendRegistration(gateway, path, Map.of("Origin", ALLOWED_ORIGIN))
+                );
+                assertThat(attempts)
+                        .extracting(HttpResponse::statusCode)
+                        .containsExactly(200, 200, 200, 429);
+                if (REFRESH_PATH.equals(path)) {
+                    assertRefreshRateLimit(attempts.getLast(), ALLOWED_ORIGIN);
+                } else {
+                    assertLogoutRateLimit(attempts.getLast(), ALLOWED_ORIGIN);
+                }
+            }
         }
     }
 
@@ -350,13 +412,50 @@ class NginxRegistrationIngressTests {
             assertThat(acceptedLogin.statusCode()).isEqualTo(200);
             assertPayloadTooLarge(oversizedLogin, LOGIN_PATH);
             assertPayloadTooLarge(chunkedLogin, LOGIN_PATH);
+
+            byte[] maximumSessionBody = new byte[1_024];
+            byte[] oversizedSessionBody = new byte[1_025];
+            for (String path : List.of(REFRESH_PATH, LOGOUT_PATH)) {
+                HttpResponse<String> acceptedSessionRequest = send(
+                        gateway,
+                        "POST",
+                        path,
+                        HttpRequest.BodyPublishers.ofByteArray(maximumSessionBody),
+                        Map.of("Content-Type", "application/octet-stream")
+                );
+                HttpResponse<String> oversizedSessionRequest = send(
+                        gateway,
+                        "POST",
+                        path,
+                        HttpRequest.BodyPublishers.ofByteArray(oversizedSessionBody),
+                        Map.of("Origin", ALLOWED_ORIGIN)
+                );
+                HttpResponse<String> chunkedSessionRequest = send(
+                        gateway,
+                        "POST",
+                        path,
+                        HttpRequest.BodyPublishers.ofInputStream(
+                                () -> new ByteArrayInputStream(oversizedSessionBody)
+                        ),
+                        Map.of("Origin", ALLOWED_ORIGIN)
+                );
+
+                assertThat(acceptedSessionRequest.statusCode()).isEqualTo(200);
+                assertPayloadTooLarge(oversizedSessionRequest, path);
+                assertPayloadTooLarge(chunkedSessionRequest, path);
+            }
         }
     }
 
     @Test
     void preservesApplicationGeneratedRateLimitResponses() throws Exception {
         try (Gateway gateway = startGateway(Policy.highCapacity())) {
-            for (String path : List.of(REGISTRATION_PATH, LOGIN_PATH)) {
+            for (String path : List.of(
+                    REGISTRATION_PATH,
+                    LOGIN_PATH,
+                    REFRESH_PATH,
+                    LOGOUT_PATH
+            )) {
                 HttpResponse<String> response = sendRegistration(
                         gateway,
                         path,
@@ -366,7 +465,12 @@ class NginxRegistrationIngressTests {
                 assertThat(response.statusCode()).isEqualTo(429);
                 assertThat(response.body())
                         .contains("AUTHENTICATION_BUSY")
-                        .doesNotContain("REGISTRATION_RATE_LIMITED", "LOGIN_RATE_LIMITED");
+                        .doesNotContain(
+                                "REGISTRATION_RATE_LIMITED",
+                                "LOGIN_RATE_LIMITED",
+                                "REFRESH_RATE_LIMITED",
+                                "LOGOUT_RATE_LIMITED"
+                        );
                 assertThat(header(response, "X-Upstream-Error")).isEqualTo("preserved");
                 assertThat(header(response, "Access-Control-Expose-Headers"))
                         .containsIgnoringCase("Retry-After");
@@ -442,6 +546,23 @@ class NginxRegistrationIngressTests {
         }
     }
 
+    @Test
+    void enforcesIndependentRefreshAndLogoutGlobalQuotasAcrossClientAddresses() throws Exception {
+        try (Gateway gateway = startGateway(Policy.sessionGloballyLimited())) {
+            for (String path : List.of(REFRESH_PATH, LOGOUT_PATH)) {
+                Container.ExecResult firstClient = requestFrom(UPSTREAM_A, gateway, path);
+                Container.ExecResult secondClient = requestFrom(UPSTREAM_B, gateway, path);
+                Container.ExecResult thirdAttempt = requestFrom(UPSTREAM_A, gateway, path);
+
+                assertThat(firstClient.getExitCode()).isZero();
+                assertThat(secondClient.getExitCode()).isZero();
+                assertThat(thirdAttempt.getExitCode()).isNotZero();
+                assertThat(thirdAttempt.getStdout() + thirdAttempt.getStderr())
+                        .contains("429");
+            }
+        }
+    }
+
     private static GenericContainer<?> upstream(String id) {
         String config = """
                 server {
@@ -490,7 +611,7 @@ class NginxRegistrationIngressTests {
                 )
                 .withEnv(
                         "NGINX_ENVSUBST_FILTER",
-                        "^(API_|AUTH_|BACKEND_|LOGIN_|REGISTRATION_)"
+                        "^(API_|AUTH_|BACKEND_|LOGIN_|LOGOUT_|REFRESH_|REGISTRATION_)"
                 )
                 .withEnv("API_SERVER_NAME", API_HOST)
                 .withEnv("BACKEND_HOST", "backend")
@@ -509,6 +630,18 @@ class NginxRegistrationIngressTests {
                 .withEnv("LOGIN_GLOBAL_RATE", policy.loginGlobalRate())
                 .withEnv("LOGIN_GLOBAL_BURST", policy.loginGlobalBurst())
                 .withEnv("LOGIN_RETRY_AFTER_SECONDS", "60")
+                .withEnv("REFRESH_MAX_REQUEST_BODY_BYTES", "1024")
+                .withEnv("REFRESH_PER_IP_RATE", policy.refreshPerIpRate())
+                .withEnv("REFRESH_PER_IP_BURST", policy.refreshPerIpBurst())
+                .withEnv("REFRESH_GLOBAL_RATE", policy.refreshGlobalRate())
+                .withEnv("REFRESH_GLOBAL_BURST", policy.refreshGlobalBurst())
+                .withEnv("REFRESH_RETRY_AFTER_SECONDS", "60")
+                .withEnv("LOGOUT_MAX_REQUEST_BODY_BYTES", "1024")
+                .withEnv("LOGOUT_PER_IP_RATE", policy.logoutPerIpRate())
+                .withEnv("LOGOUT_PER_IP_BURST", policy.logoutPerIpBurst())
+                .withEnv("LOGOUT_GLOBAL_RATE", policy.logoutGlobalRate())
+                .withEnv("LOGOUT_GLOBAL_BURST", policy.logoutGlobalBurst())
+                .withEnv("LOGOUT_RETRY_AFTER_SECONDS", "60")
                 .waitingFor(Wait.forListeningPort()
                         .withStartupTimeout(Duration.ofSeconds(30)));
         container.start();
@@ -620,41 +753,76 @@ class NginxRegistrationIngressTests {
             HttpResponse<String> response,
             String allowedOrigin
     ) {
-        assertThat(response.statusCode()).isEqualTo(429);
-        assertThat(header(response, "Content-Type")).startsWith("application/problem+json");
-        assertThat(header(response, "Cache-Control")).isEqualTo("no-store");
-        assertThat(header(response, "Retry-After")).isEqualTo("60");
-        assertThat(header(response, "Access-Control-Expose-Headers"))
-                .containsIgnoringCase("Retry-After");
-        assertThat(header(response, "Access-Control-Allow-Origin")).isEqualTo(allowedOrigin);
-        assertThat(header(response, "Vary")).contains("Origin");
-        JsonNode problem = parseProblem(response);
-        assertThat(problem.path("status").asInt()).isEqualTo(429);
-        assertThat(problem.path("code").asText()).isEqualTo("REGISTRATION_RATE_LIMITED");
-        assertThat(problem.path("message").asText()).isEqualTo("Too many registration attempts");
-        assertThat(problem.path("path").asText()).isEqualTo(REGISTRATION_PATH);
-        assertThat(problem.path("fieldErrors").isObject()).isTrue();
-        assertThat(problem.path("fieldErrors").isEmpty()).isTrue();
-        assertThat(OffsetDateTime.parse(problem.path("timestamp").asText())).isNotNull();
+        assertAuthRateLimit(
+                response,
+                allowedOrigin,
+                "REGISTRATION_RATE_LIMITED",
+                "Too many registration attempts",
+                REGISTRATION_PATH
+        );
     }
 
     private static void assertLoginRateLimit(
             HttpResponse<String> response,
             String allowedOrigin
     ) {
+        assertAuthRateLimit(
+                response,
+                allowedOrigin,
+                "LOGIN_RATE_LIMITED",
+                "Too many login attempts",
+                LOGIN_PATH
+        );
+    }
+
+    private static void assertRefreshRateLimit(
+            HttpResponse<String> response,
+            String allowedOrigin
+    ) {
+        assertAuthRateLimit(
+                response,
+                allowedOrigin,
+                "REFRESH_RATE_LIMITED",
+                "Too many refresh attempts",
+                REFRESH_PATH
+        );
+    }
+
+    private static void assertLogoutRateLimit(
+            HttpResponse<String> response,
+            String allowedOrigin
+    ) {
+        assertAuthRateLimit(
+                response,
+                allowedOrigin,
+                "LOGOUT_RATE_LIMITED",
+                "Too many logout attempts",
+                LOGOUT_PATH
+        );
+    }
+
+    private static void assertAuthRateLimit(
+            HttpResponse<String> response,
+            String allowedOrigin,
+            String expectedCode,
+            String expectedMessage,
+            String expectedPath
+    ) {
         assertThat(response.statusCode()).isEqualTo(429);
         assertThat(header(response, "Content-Type")).startsWith("application/problem+json");
         assertThat(header(response, "Cache-Control")).isEqualTo("no-store");
         assertThat(header(response, "Retry-After")).isEqualTo("60");
         assertThat(header(response, "Access-Control-Expose-Headers"))
-                .containsIgnoringCase("Retry-After");
+                .containsIgnoringCase("Retry-After")
+                .containsIgnoringCase("X-XSRF-TOKEN");
         assertThat(header(response, "Access-Control-Allow-Origin")).isEqualTo(allowedOrigin);
+        assertThat(header(response, "Access-Control-Allow-Credentials")).isEqualTo("true");
         assertThat(header(response, "Vary")).contains("Origin");
         JsonNode problem = parseProblem(response);
         assertThat(problem.path("status").asInt()).isEqualTo(429);
-        assertThat(problem.path("code").asText()).isEqualTo("LOGIN_RATE_LIMITED");
-        assertThat(problem.path("message").asText()).isEqualTo("Too many login attempts");
-        assertThat(problem.path("path").asText()).isEqualTo(LOGIN_PATH);
+        assertThat(problem.path("code").asText()).isEqualTo(expectedCode);
+        assertThat(problem.path("message").asText()).isEqualTo(expectedMessage);
+        assertThat(problem.path("path").asText()).isEqualTo(expectedPath);
         assertThat(problem.path("fieldErrors").isObject()).isTrue();
         assertThat(problem.path("fieldErrors").isEmpty()).isTrue();
         assertThat(OffsetDateTime.parse(problem.path("timestamp").asText())).isNotNull();
@@ -668,6 +836,7 @@ class NginxRegistrationIngressTests {
         assertThat(header(response, "Content-Type")).startsWith("application/problem+json");
         assertThat(header(response, "Cache-Control")).isEqualTo("no-store");
         assertThat(header(response, "Access-Control-Allow-Origin")).isEqualTo(ALLOWED_ORIGIN);
+        assertThat(header(response, "Access-Control-Allow-Credentials")).isEqualTo("true");
         assertThat(response.headers().firstValue("Retry-After")).isEmpty();
         assertThat(response.headers().firstValue("X-Upstream-Id")).isEmpty();
         JsonNode problem = parseProblem(response);
@@ -722,11 +891,21 @@ class NginxRegistrationIngressTests {
             String loginPerIpRate,
             String loginPerIpBurst,
             String loginGlobalRate,
-            String loginGlobalBurst
+            String loginGlobalBurst,
+            String refreshPerIpRate,
+            String refreshPerIpBurst,
+            String refreshGlobalRate,
+            String refreshGlobalBurst,
+            String logoutPerIpRate,
+            String logoutPerIpBurst,
+            String logoutGlobalRate,
+            String logoutGlobalBurst
     ) {
 
         static Policy highCapacity() {
             return new Policy(
+                    "100r/s", "100", "100r/s", "100",
+                    "100r/s", "100", "100r/s", "100",
                     "100r/s", "100", "100r/s", "100",
                     "100r/s", "100", "100r/s", "100"
             );
@@ -735,13 +914,17 @@ class NginxRegistrationIngressTests {
         static Policy productionDefaults() {
             return new Policy(
                     "5r/m", "2", "30r/m", "10",
-                    "10r/m", "5", "120r/m", "30"
+                    "10r/m", "5", "120r/m", "30",
+                    "30r/m", "10", "300r/m", "100",
+                    "30r/m", "10", "300r/m", "100"
             );
         }
 
         static Policy perIpLimited() {
             return new Policy(
                     "1r/m", "2", "100r/s", "100",
+                    "100r/s", "100", "100r/s", "100",
+                    "100r/s", "100", "100r/s", "100",
                     "100r/s", "100", "100r/s", "100"
             );
         }
@@ -749,6 +932,8 @@ class NginxRegistrationIngressTests {
         static Policy globallyLimited() {
             return new Policy(
                     "100r/s", "100", "1r/m", "1",
+                    "100r/s", "100", "100r/s", "100",
+                    "100r/s", "100", "100r/s", "100",
                     "100r/s", "100", "100r/s", "100"
             );
         }
@@ -756,13 +941,35 @@ class NginxRegistrationIngressTests {
         static Policy loginPerIpLimited() {
             return new Policy(
                     "100r/s", "100", "100r/s", "100",
-                    "1r/m", "2", "100r/s", "100"
+                    "1r/m", "2", "100r/s", "100",
+                    "100r/s", "100", "100r/s", "100",
+                    "100r/s", "100", "100r/s", "100"
             );
         }
 
         static Policy loginGloballyLimited() {
             return new Policy(
                     "100r/s", "100", "100r/s", "100",
+                    "100r/s", "100", "1r/m", "1",
+                    "100r/s", "100", "100r/s", "100",
+                    "100r/s", "100", "100r/s", "100"
+            );
+        }
+
+        static Policy sessionPerIpLimited() {
+            return new Policy(
+                    "100r/s", "100", "100r/s", "100",
+                    "100r/s", "100", "100r/s", "100",
+                    "1r/m", "2", "100r/s", "100",
+                    "1r/m", "2", "100r/s", "100"
+            );
+        }
+
+        static Policy sessionGloballyLimited() {
+            return new Policy(
+                    "100r/s", "100", "100r/s", "100",
+                    "100r/s", "100", "100r/s", "100",
+                    "100r/s", "100", "1r/m", "1",
                     "100r/s", "100", "1r/m", "1"
             );
         }
