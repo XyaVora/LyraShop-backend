@@ -32,7 +32,11 @@ public class AuthenticationRequestBodyLimitFilter extends OncePerRequestFilter {
             PathPatternRequestMatcher.withDefaults()
                     .matcher(HttpMethod.POST, "/api/v1/auth/register"),
             PathPatternRequestMatcher.withDefaults()
-                    .matcher(HttpMethod.POST, "/api/v1/auth/login")
+                    .matcher(HttpMethod.POST, "/api/v1/auth/login"),
+            PathPatternRequestMatcher.withDefaults()
+                    .matcher(HttpMethod.POST, "/api/v1/auth/refresh"),
+            PathPatternRequestMatcher.withDefaults()
+                    .matcher(HttpMethod.POST, "/api/v1/auth/logout")
     );
 
     private final int maxRequestBodyBytes;
