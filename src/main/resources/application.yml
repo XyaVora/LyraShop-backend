@@ -45,6 +45,8 @@ app:
       audience: ${JWT_AUDIENCE:lyrashop-api}
       access-token-ttl: ${JWT_ACCESS_TOKEN_TTL:15m}
       secret-base64: ${JWT_SECRET_BASE64:}
+    refresh-token:
+      ttl: ${REFRESH_TOKEN_TTL:7d}
 
 management:
   server:
