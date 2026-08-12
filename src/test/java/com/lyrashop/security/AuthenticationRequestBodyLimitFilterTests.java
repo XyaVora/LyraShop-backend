@@ -22,6 +22,8 @@ class AuthenticationRequestBodyLimitFilterTests {
 
     private static final String REGISTER_PATH = "/api/v1/auth/register";
     private static final String LOGIN_PATH = "/api/v1/auth/login";
+    private static final String REFRESH_PATH = "/api/v1/auth/refresh";
+    private static final String LOGOUT_PATH = "/api/v1/auth/logout";
     private static final int BODY_LIMIT = 16;
 
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
@@ -104,6 +106,20 @@ class AuthenticationRequestBodyLimitFilterTests {
         assertPayloadTooLarge(response, LOGIN_PATH);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {REFRESH_PATH, LOGOUT_PATH})
+    void appliesTheSameRawBodyLimitToTokenCookieEndpoints(String path) throws Exception {
+        byte[] body = "x".repeat(BODY_LIMIT + 1).getBytes(StandardCharsets.UTF_8);
+        MockHttpServletRequest request = request(body, body.length, path);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, (servletRequest, servletResponse) -> {
+            throw new AssertionError("oversized token-cookie body must not reach the chain");
+        });
+
+        assertPayloadTooLarge(response, path);
+    }
+
     @Test
     void passesAnExactLimitBodyWithoutConsumingIt() throws Exception {
         byte[] body = "x".repeat(BODY_LIMIT).getBytes(StandardCharsets.UTF_8);
@@ -134,8 +150,8 @@ class AuthenticationRequestBodyLimitFilterTests {
         assertBypassesFilter(otherMethod);
 
         MockHttpServletRequest otherPath = request(oversizedBody, oversizedBody.length);
-        otherPath.setRequestURI("/api/v1/auth/refresh");
-        otherPath.setServletPath("/api/v1/auth/refresh");
+        otherPath.setRequestURI("/api/v1/auth/csrf");
+        otherPath.setServletPath("/api/v1/auth/csrf");
         assertBypassesFilter(otherPath);
     }
 
