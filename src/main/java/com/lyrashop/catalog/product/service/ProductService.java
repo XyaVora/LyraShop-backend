@@ -30,7 +30,8 @@ public class ProductService {
     @Transactional(readOnly = true)
     public Page<ProductResult> list(ProductQuery query) {
         PageRequest pageable = PageRequest.of(query.page(), query.size(), query.sort().toSort());
-        var specification = ProductSpecifications.active();
+        var specification = ProductSpecifications.active()
+                .and(ProductSpecifications.categoryActive());
         if (query.keyword() != null) {
             specification = specification.and(ProductSpecifications.keyword(query.keyword()));
         }
@@ -54,7 +55,10 @@ public class ProductService {
 
     @Transactional(readOnly = true)
     public ProductResult getActive(UUID id) {
-        return productRepository.findByIdAndActiveTrue(id)
+        var specification = ProductSpecifications.id(id)
+                .and(ProductSpecifications.active())
+                .and(ProductSpecifications.categoryActive());
+        return productRepository.findOne(specification)
                 .map(ProductResult::from)
                 .orElseThrow(ProductNotFoundException::new);
     }

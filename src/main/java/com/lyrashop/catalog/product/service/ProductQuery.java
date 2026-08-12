@@ -69,7 +69,8 @@ public record ProductQuery(
         if (value == null || value.isBlank()) return null;
         try {
             BigDecimal price = new BigDecimal(value.strip());
-            if (price.signum() < 0 || price.scale() > 2 || price.precision() > 12) {
+            if (price.signum() < 0 || price.scale() < 0 || price.scale() > 2
+                    || price.precision() - price.scale() > 10 || price.precision() > 12) {
                 throw new ProductQueryException();
             }
             return price;

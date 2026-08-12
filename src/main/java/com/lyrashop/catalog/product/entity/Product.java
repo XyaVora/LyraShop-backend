@@ -97,6 +97,10 @@ public class Product {
     public BigDecimal getBasePrice() { return basePrice; }
     public Long getCategoryId() { return categoryId; }
     public boolean isActive() { return active; }
+
+    public void deactivate() {
+        this.active = false;
+    }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
     public long getVersion() { return version; }
@@ -125,7 +129,8 @@ public class Product {
     }
 
     private static BigDecimal normalizePrice(BigDecimal value) {
-        if (value == null || value.signum() < 0 || value.scale() > 2 || value.precision() > 12) {
+        if (value == null || value.signum() < 0 || value.scale() < 0 || value.scale() > 2
+                || value.precision() - value.scale() > 10 || value.precision() > 12) {
             throw new IllegalArgumentException("basePrice must be a non-negative amount with at most two decimals");
         }
         return value;

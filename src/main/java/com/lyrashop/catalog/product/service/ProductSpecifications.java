@@ -4,6 +4,8 @@ import java.util.Locale;
 
 import org.springframework.data.jpa.domain.Specification;
 
+import jakarta.persistence.criteria.Subquery;
+
 import com.lyrashop.catalog.product.entity.Product;
 
 public final class ProductSpecifications {
@@ -13,6 +15,23 @@ public final class ProductSpecifications {
 
     public static Specification<Product> active() {
         return (root, query, builder) -> builder.isTrue(root.get("active"));
+    }
+
+    public static Specification<Product> id(java.util.UUID id) {
+        return (root, query, builder) -> builder.equal(root.get("id"), id);
+    }
+
+    public static Specification<Product> categoryActive() {
+        return (root, query, builder) -> {
+            Subquery<Long> subquery = query.subquery(Long.class);
+            var category = subquery.from(com.lyrashop.catalog.category.entity.Category.class);
+            subquery.select(category.get("id"))
+                    .where(
+                            builder.equal(category.get("id"), root.get("categoryId")),
+                            builder.isTrue(category.get("active"))
+                    );
+            return builder.exists(subquery);
+        };
     }
 
     public static Specification<Product> categoryId(Long categoryId) {
