@@ -116,6 +116,38 @@ public class GlobalExceptionHandler {
         );
     }
 
+    @ExceptionHandler(CategoryNotFoundException.class)
+    ResponseEntity<ApiErrorResponse> handleCategoryNotFound(
+            CategoryNotFoundException exception,
+            HttpServletRequest request
+    ) {
+        return problem(
+                HttpStatus.NOT_FOUND,
+                ApiErrorResponse.of(
+                        HttpStatus.NOT_FOUND.value(),
+                        "CATEGORY_NOT_FOUND",
+                        "Category was not found",
+                        request.getRequestURI()
+                )
+        );
+    }
+
+    @ExceptionHandler(CategorySlugAlreadyExistsException.class)
+    ResponseEntity<ApiErrorResponse> handleDuplicateCategorySlug(
+            CategorySlugAlreadyExistsException exception,
+            HttpServletRequest request
+    ) {
+        return problem(
+                HttpStatus.CONFLICT,
+                ApiErrorResponse.of(
+                        HttpStatus.CONFLICT.value(),
+                        "CATEGORY_SLUG_ALREADY_EXISTS",
+                        "A category with this slug already exists",
+                        request.getRequestURI()
+                )
+        );
+    }
+
     @ExceptionHandler(AuthenticationCapacityExceededException.class)
     ResponseEntity<ApiErrorResponse> handleAuthenticationCapacity(
             AuthenticationCapacityExceededException exception,

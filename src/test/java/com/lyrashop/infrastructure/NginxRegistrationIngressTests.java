@@ -104,6 +104,7 @@ class NginxRegistrationIngressTests {
                             "${API_",
                             "${BACKEND_",
                             "${CORS_",
+                            "${BUSINESS_",
                             "${LOGIN_",
                             "${LOGOUT_",
                             "${REFRESH_",
@@ -125,6 +126,7 @@ class NginxRegistrationIngressTests {
                             "client_max_body_size 8192;",
                             "client_max_body_size 4096;",
                             "client_max_body_size 1024;",
+                            "location = /api/v1/admin/categories",
                             "location = /api/v1/auth/login",
                             "location = /api/v1/auth/refresh",
                             "location = /api/v1/auth/logout",
@@ -611,13 +613,14 @@ class NginxRegistrationIngressTests {
                 )
                 .withEnv(
                         "NGINX_ENVSUBST_FILTER",
-                        "^(API_|AUTH_|BACKEND_|LOGIN_|LOGOUT_|REFRESH_|REGISTRATION_)"
+                        "^(API_|AUTH_|BACKEND_|BUSINESS_|LOGIN_|LOGOUT_|REFRESH_|REGISTRATION_)"
                 )
                 .withEnv("API_SERVER_NAME", API_HOST)
                 .withEnv("BACKEND_HOST", "backend")
                 .withEnv("BACKEND_PORT", "8080")
                 .withEnv("BACKEND_DNS_RESOLVER", "127.0.0.11")
                 .withEnv("AUTH_MAX_REQUEST_BODY_BYTES", "8192")
+                .withEnv("BUSINESS_MAX_REQUEST_BODY_BYTES", "8192")
                 .withEnv("REGISTRATION_CORS_ALLOWED_ORIGIN", ALLOWED_ORIGIN)
                 .withEnv("REGISTRATION_PER_IP_RATE", policy.perIpRate())
                 .withEnv("REGISTRATION_PER_IP_BURST", policy.perIpBurst())

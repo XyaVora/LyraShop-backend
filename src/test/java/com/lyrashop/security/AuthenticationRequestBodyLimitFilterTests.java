@@ -24,12 +24,15 @@ class AuthenticationRequestBodyLimitFilterTests {
     private static final String LOGIN_PATH = "/api/v1/auth/login";
     private static final String REFRESH_PATH = "/api/v1/auth/refresh";
     private static final String LOGOUT_PATH = "/api/v1/auth/logout";
+    private static final String ADMIN_CATEGORY_PATH = "/api/v1/admin/categories";
     private static final int BODY_LIMIT = 16;
+    private static final int BUSINESS_BODY_LIMIT = 32;
 
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
     private final AuthenticationRequestBodyLimitFilter filter =
             new AuthenticationRequestBodyLimitFilter(
                     BODY_LIMIT,
+                    BUSINESS_BODY_LIMIT,
                     new ApiErrorWriter(objectMapper)
             );
 
@@ -121,6 +124,19 @@ class AuthenticationRequestBodyLimitFilterTests {
     }
 
     @Test
+    void appliesBusinessBodyLimitToAdminCategoryCreation() throws Exception {
+        byte[] body = "x".repeat(BUSINESS_BODY_LIMIT + 1).getBytes(StandardCharsets.UTF_8);
+        MockHttpServletRequest request = request(body, body.length, ADMIN_CATEGORY_PATH);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, (servletRequest, servletResponse) -> {
+            throw new AssertionError("oversized category body must not reach the chain");
+        });
+
+        assertPayloadTooLarge(response, ADMIN_CATEGORY_PATH);
+    }
+
+    @Test
     void passesAnExactLimitBodyWithoutConsumingIt() throws Exception {
         byte[] body = "x".repeat(BODY_LIMIT).getBytes(StandardCharsets.UTF_8);
         MockHttpServletRequest request = request(body, body.length);
@@ -153,6 +169,9 @@ class AuthenticationRequestBodyLimitFilterTests {
         otherPath.setRequestURI("/api/v1/auth/csrf");
         otherPath.setServletPath("/api/v1/auth/csrf");
         assertBypassesFilter(otherPath);
+
+        MockHttpServletRequest publicPath = request(oversizedBody, oversizedBody.length, "/api/v1/categories");
+        assertBypassesFilter(publicPath);
     }
 
     private void assertPayloadTooLarge(

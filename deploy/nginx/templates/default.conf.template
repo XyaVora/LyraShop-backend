@@ -53,6 +53,8 @@ map $uri $reject_ambiguous_auth_path {
     ~^/api/v1/auth/refresh\; 1;
     ~^/api/v1/auth/logout/ 1;
     ~^/api/v1/auth/logout\; 1;
+    ~^/api/v1/admin/categories/ 1;
+    ~^/api/v1/admin/categories\; 1;
 }
 
 limit_req_zone $registration_client_key zone=registration_per_ip:1m rate=${REGISTRATION_PER_IP_RATE};
@@ -242,6 +244,12 @@ server {
         error_page 413 = @logout_payload_too_large;
         error_page 429 = @logout_rate_limited;
 
+        proxy_pass http://lyrashop_backend;
+    }
+
+    location = /api/v1/admin/categories {
+        client_max_body_size ${BUSINESS_MAX_REQUEST_BODY_BYTES};
+        proxy_request_buffering on;
         proxy_pass http://lyrashop_backend;
     }
 

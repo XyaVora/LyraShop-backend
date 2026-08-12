@@ -13,6 +13,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -23,6 +24,8 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.security.web.util.matcher.OrRequestMatcher;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -32,14 +35,23 @@ import com.lyrashop.auth.service.RefreshCookieService;
 import com.lyrashop.exception.ApiErrorWriter;
 import com.lyrashop.security.AuthenticationRequestBodyLimitFilter;
 import com.lyrashop.security.RestSecurityErrorHandler;
+import com.lyrashop.user.entity.UserRole;
 
 @Configuration
+@EnableMethodSecurity
 @EnableConfigurationProperties({CorsProperties.class, AuthProtectionProperties.class})
 public class SecurityConfig {
 
     private static final String BCRYPT_ID = "bcrypt";
     private static final int BCRYPT_STRENGTH = 12;
+    static final RequestMatcher COOKIE_CSRF_REQUEST = new OrRequestMatcher(
+            PathPatternRequestMatcher.withDefaults()
+                    .matcher(HttpMethod.POST, "/api/v1/auth/refresh"),
+            PathPatternRequestMatcher.withDefaults()
+                    .matcher(HttpMethod.POST, "/api/v1/auth/logout")
+    );
     public static final String XSRF_COOKIE_NAME = RefreshCookieService.CSRF_COOKIE_NAME;
+
     @Bean
     SecurityFilterChain securityFilterChain(
             HttpSecurity http,
@@ -55,6 +67,7 @@ public class SecurityConfig {
                 .addFilterAfter(
                         new AuthenticationRequestBodyLimitFilter(
                                 authProtectionProperties.maxRequestBodyBytes(),
+                                authProtectionProperties.businessRequestBodyBytes(),
                                 errorWriter
                         ),
                         CorsFilter.class
@@ -62,12 +75,7 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf
                         .csrfTokenRepository(csrfTokenRepository)
                         .csrfTokenRequestHandler(csrfTokenRequestHandler)
-                        .ignoringRequestMatchers(
-                                PathPatternRequestMatcher.withDefaults()
-                                        .matcher(HttpMethod.POST, "/api/v1/auth/register"),
-                                PathPatternRequestMatcher.withDefaults()
-                                        .matcher(HttpMethod.POST, "/api/v1/auth/login")
-                        ))
+                        .requireCsrfProtectionMatcher(COOKIE_CSRF_REQUEST))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .requestCache(cache -> cache.disable())
                 .formLogin(form -> form.disable())
@@ -89,6 +97,13 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/auth/csrf").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/refresh").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/logout").authenticated()
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/v1/categories",
+                                "/api/v1/categories/*"
+                        ).permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/admin/categories")
+                        .hasRole(UserRole.ADMIN.name())
                         .anyRequest().denyAll()
                 );
 
