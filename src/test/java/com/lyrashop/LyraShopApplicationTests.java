@@ -753,8 +753,8 @@ class LyraShopApplicationTests {
         mockMvc.perform(post("/api/v1/private")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("CSRF_REQUIRED"));
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
 
         mockMvc.perform(post("/api/v1/private")
                         .with(csrf())
