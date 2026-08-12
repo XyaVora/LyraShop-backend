@@ -38,21 +38,29 @@ public class AuthenticationRequestBodyLimitFilter extends OncePerRequestFilter {
             PathPatternRequestMatcher.withDefaults()
                     .matcher(HttpMethod.POST, "/api/v1/auth/logout")
     );
+    private static final RequestMatcher BUSINESS_REQUEST = new OrRequestMatcher(
+            PathPatternRequestMatcher.withDefaults()
+                    .matcher(HttpMethod.POST, "/api/v1/admin/categories")
+    );
 
-    private final int maxRequestBodyBytes;
+    private final int authenticationMaxRequestBodyBytes;
+    private final int businessMaxRequestBodyBytes;
     private final ApiErrorWriter errorWriter;
 
     public AuthenticationRequestBodyLimitFilter(
-            int maxRequestBodyBytes,
+            int authenticationMaxRequestBodyBytes,
+            int businessMaxRequestBodyBytes,
             ApiErrorWriter errorWriter
     ) {
-        this.maxRequestBodyBytes = maxRequestBodyBytes;
+        this.authenticationMaxRequestBodyBytes = authenticationMaxRequestBodyBytes;
+        this.businessMaxRequestBodyBytes = businessMaxRequestBodyBytes;
         this.errorWriter = errorWriter;
     }
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        return !AUTHENTICATION_REQUEST.matches(request);
+        return !AUTHENTICATION_REQUEST.matches(request)
+                && !BUSINESS_REQUEST.matches(request);
     }
 
     @Override
@@ -61,6 +69,9 @@ public class AuthenticationRequestBodyLimitFilter extends OncePerRequestFilter {
             HttpServletResponse response,
             FilterChain filterChain
     ) throws ServletException, IOException {
+        int maxRequestBodyBytes = AUTHENTICATION_REQUEST.matches(request)
+                ? authenticationMaxRequestBodyBytes
+                : businessMaxRequestBodyBytes;
         if (request.getContentLengthLong() > maxRequestBodyBytes) {
             reject(request, response);
             return;

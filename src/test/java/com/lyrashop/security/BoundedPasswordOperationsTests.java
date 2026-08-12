@@ -20,7 +20,7 @@ import com.lyrashop.exception.AuthenticationCapacityExceededException;
 class BoundedPasswordOperationsTests {
 
     private static final AuthProtectionProperties SINGLE_OPERATION_CAPACITY =
-            new AuthProtectionProperties(8_192, 1, 3);
+            new AuthProtectionProperties(8_192, 8_192, 1, 3);
 
     @Test
     void sharesCapacityBetweenHashingAndPasswordVerification() throws Exception {
