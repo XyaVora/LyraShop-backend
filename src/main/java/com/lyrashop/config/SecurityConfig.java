@@ -20,12 +20,15 @@ import org.springframework.security.crypto.password.DelegatingPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.filter.CorsFilter;
 
+import com.lyrashop.auth.service.RefreshCookieService;
 import com.lyrashop.exception.ApiErrorWriter;
 import com.lyrashop.security.AuthenticationRequestBodyLimitFilter;
 import com.lyrashop.security.RestSecurityErrorHandler;
@@ -36,14 +39,16 @@ public class SecurityConfig {
 
     private static final String BCRYPT_ID = "bcrypt";
     private static final int BCRYPT_STRENGTH = 12;
-
+    public static final String XSRF_COOKIE_NAME = RefreshCookieService.CSRF_COOKIE_NAME;
     @Bean
     SecurityFilterChain securityFilterChain(
             HttpSecurity http,
             RestSecurityErrorHandler securityErrorHandler,
             ApiErrorWriter errorWriter,
             AuthProtectionProperties authProtectionProperties,
-            JwtAuthenticationConverter jwtAuthenticationConverter
+            JwtAuthenticationConverter jwtAuthenticationConverter,
+            CookieCsrfTokenRepository csrfTokenRepository,
+            CsrfTokenRequestAttributeHandler csrfTokenRequestHandler
     ) throws Exception {
         http
                 .cors(Customizer.withDefaults())
@@ -54,12 +59,15 @@ public class SecurityConfig {
                         ),
                         CorsFilter.class
                 )
-                .csrf(csrf -> csrf.ignoringRequestMatchers(
-                        PathPatternRequestMatcher.withDefaults()
-                                .matcher(HttpMethod.POST, "/api/v1/auth/register"),
-                        PathPatternRequestMatcher.withDefaults()
-                                .matcher(HttpMethod.POST, "/api/v1/auth/login")
-                ))
+                .csrf(csrf -> csrf
+                        .csrfTokenRepository(csrfTokenRepository)
+                        .csrfTokenRequestHandler(csrfTokenRequestHandler)
+                        .ignoringRequestMatchers(
+                                PathPatternRequestMatcher.withDefaults()
+                                        .matcher(HttpMethod.POST, "/api/v1/auth/register"),
+                                PathPatternRequestMatcher.withDefaults()
+                                        .matcher(HttpMethod.POST, "/api/v1/auth/login")
+                        ))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .requestCache(cache -> cache.disable())
                 .formLogin(form -> form.disable())
@@ -78,6 +86,9 @@ public class SecurityConfig {
                         .requestMatchers(EndpointRequest.to(HealthEndpoint.class)).permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/register").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/login").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/auth/csrf").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/auth/refresh").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/auth/logout").authenticated()
                         .anyRequest().denyAll()
                 );
 
@@ -95,17 +106,42 @@ public class SecurityConfig {
     }
 
     @Bean
+    CookieCsrfTokenRepository csrfTokenRepository() {
+        CookieCsrfTokenRepository repository = new CookieCsrfTokenRepository();
+        repository.setCookieName(XSRF_COOKIE_NAME);
+        repository.setHeaderName(RefreshCookieService.XSRF_HEADER_NAME);
+        repository.setCookieCustomizer(cookie -> cookie
+                .httpOnly(true)
+                .secure(true)
+                .sameSite("Strict")
+                .path(RefreshCookieService.COOKIE_PATH));
+        return repository;
+    }
+
+    @Bean
+    CsrfTokenRequestAttributeHandler csrfTokenRequestHandler() {
+        return new CsrfTokenRequestAttributeHandler();
+    }
+
+    @Bean
     CorsConfigurationSource corsConfigurationSource(CorsProperties properties) {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(properties.allowedOrigins());
-        configuration.setAllowedMethods(List.of(HttpMethod.POST.name()));
+        configuration.setAllowedMethods(List.of(
+                HttpMethod.GET.name(),
+                HttpMethod.POST.name()
+        ));
         configuration.setAllowedHeaders(List.of(
                 HttpHeaders.ACCEPT,
                 HttpHeaders.AUTHORIZATION,
-                HttpHeaders.CONTENT_TYPE
+                HttpHeaders.CONTENT_TYPE,
+                RefreshCookieService.XSRF_HEADER_NAME
         ));
-        configuration.setExposedHeaders(List.of(HttpHeaders.RETRY_AFTER));
-        configuration.setAllowCredentials(false);
+        configuration.setExposedHeaders(List.of(
+                HttpHeaders.RETRY_AFTER,
+                RefreshCookieService.XSRF_HEADER_NAME
+        ));
+        configuration.setAllowCredentials(true);
         configuration.setMaxAge(Duration.ofHours(1));
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
