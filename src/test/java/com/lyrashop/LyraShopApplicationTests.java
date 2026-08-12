@@ -3,6 +3,8 @@ package com.lyrashop;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.hamcrest.Matchers.containsStringIgnoringCase;
+import static org.hamcrest.Matchers.emptyString;
+import static org.hamcrest.Matchers.not;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
@@ -16,6 +18,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import java.nio.ByteBuffer;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Arrays;
+import java.util.Base64;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -25,6 +29,7 @@ import java.util.UUID;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import org.flywaydb.core.Flyway;
@@ -55,15 +60,22 @@ import org.testcontainers.utility.DockerImageName;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.lyrashop.auth.controller.AuthController;
 import com.lyrashop.auth.entity.RefreshSession;
 import com.lyrashop.auth.entity.RefreshTokenDigest;
 import com.lyrashop.auth.repository.RefreshSessionRepository;
+import com.lyrashop.auth.service.RefreshCookieService;
+import com.lyrashop.auth.service.IssuedAuthentication;
+import com.lyrashop.auth.service.RefreshTokenService;
+import com.lyrashop.config.SecurityConfig;
+import com.lyrashop.exception.InvalidRefreshTokenException;
 import com.lyrashop.security.AccessTokenClaimsValidator;
 import com.lyrashop.user.entity.User;
 import com.lyrashop.user.entity.UserRole;
 import com.lyrashop.user.repository.UserRepository;
 
 import jakarta.persistence.EntityManager;
+import jakarta.servlet.http.Cookie;
 
 @Testcontainers
 @SpringBootTest(
@@ -110,6 +122,9 @@ class LyraShopApplicationTests {
 
     @Autowired
     private RefreshSessionRepository refreshSessionRepository;
+
+    @Autowired
+    private RefreshTokenService refreshTokenService;
 
     @Autowired
     private PlatformTransactionManager transactionManager;
@@ -341,7 +356,18 @@ class LyraShopApplicationTests {
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
                 .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
                 .andExpect(header().string(HttpHeaders.PRAGMA, "no-cache"))
-                .andExpect(header().doesNotExist(HttpHeaders.SET_COOKIE))
+                .andExpect(header().string(AuthController.XSRF_HEADER_NAME, not(emptyString())))
+                .andExpect(cookie().exists(RefreshCookieService.COOKIE_NAME))
+                .andExpect(cookie().httpOnly(RefreshCookieService.COOKIE_NAME, true))
+                .andExpect(cookie().secure(RefreshCookieService.COOKIE_NAME, true))
+                .andExpect(cookie().path(
+                        RefreshCookieService.COOKIE_NAME,
+                        RefreshCookieService.COOKIE_PATH
+                ))
+                .andExpect(cookie().maxAge(RefreshCookieService.COOKIE_NAME, 604_800))
+                .andExpect(cookie().exists(SecurityConfig.XSRF_COOKIE_NAME))
+                .andExpect(cookie().httpOnly(SecurityConfig.XSRF_COOKIE_NAME, true))
+                .andExpect(cookie().secure(SecurityConfig.XSRF_COOKIE_NAME, true))
                 .andExpect(cookie().doesNotExist("JSESSIONID"))
                 .andExpect(jsonPath("$.accessToken").isNotEmpty())
                 .andExpect(jsonPath("$.tokenType").value("Bearer"))
@@ -368,12 +394,213 @@ class LyraShopApplicationTests {
                 "passwordHash"
         );
         assertThat(result.getResponse().getContentAsString())
-                .doesNotContain(rawPassword, user.getPasswordHash(), canonicalEmail);
+                .doesNotContain(
+                        rawPassword,
+                        user.getPasswordHash(),
+                        canonicalEmail,
+                        result.getResponse()
+                                .getCookie(RefreshCookieService.COOKIE_NAME)
+                                .getValue()
+                );
+        assertThat(result.getResponse()
+                .getCookie(RefreshCookieService.COOKIE_NAME)
+                .getAttribute("SameSite")).isEqualTo("Strict");
+        assertThat(result.getResponse()
+                .getCookie(SecurityConfig.XSRF_COOKIE_NAME)
+                .getAttribute("SameSite")).isEqualTo("Strict");
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM refresh_sessions WHERE user_id = ?",
                 Integer.class,
                 uuidBytes(user.getId())
-        )).isZero();
+        )).isOne();
+        String rawRefreshToken = result.getResponse()
+                .getCookie(RefreshCookieService.COOKIE_NAME)
+                .getValue();
+        assertThat(refreshSessionRepository.findByTokenDigest(
+                RefreshTokenDigest.fromRawToken(rawRefreshToken)
+        )).isPresent();
+    }
+
+    @Test
+    void protectsRefreshWithCsrfRotatesTokensAndRevokesTheFamilyOnReplay() throws Exception {
+        String email = "refresh-flow-" + UUID.randomUUID() + "@example.com";
+        String password = "refresh flow password";
+        User user = userRepository.saveAndFlush(User.createCustomer(
+                email,
+                passwordEncoder.encode(password),
+                "Refresh Customer",
+                null
+        ));
+
+        var login = mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(loginJson(email, password)))
+                .andExpect(status().isOk())
+                .andReturn();
+        Cookie originalRefresh = login.getResponse().getCookie(RefreshCookieService.COOKIE_NAME);
+        Cookie csrfCookie = login.getResponse().getCookie(SecurityConfig.XSRF_COOKIE_NAME);
+        String csrfToken = login.getResponse().getHeader(AuthController.XSRF_HEADER_NAME);
+        assertThat(originalRefresh).isNotNull();
+        assertThat(csrfCookie).isNotNull();
+        assertThat(csrfToken).isNotBlank();
+
+        mockMvc.perform(get("/api/v1/auth/csrf").cookie(csrfCookie))
+                .andExpect(status().isNoContent())
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+                .andExpect(header().string(AuthController.XSRF_HEADER_NAME, csrfToken));
+
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                        .cookie(originalRefresh, csrfCookie))
+                .andExpect(status().isForbidden())
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+                .andExpect(jsonPath("$.code").value("CSRF_REQUIRED"));
+
+        RefreshSession originalSession = refreshSessionRepository.findByTokenDigest(
+                RefreshTokenDigest.fromRawToken(originalRefresh.getValue())
+        ).orElseThrow();
+        assertThat(originalSession.getConsumedAt()).isNull();
+
+        var refresh = mockMvc.perform(post("/api/v1/auth/refresh")
+                        .cookie(originalRefresh, csrfCookie)
+                        .header(AuthController.XSRF_HEADER_NAME, csrfToken))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+                .andExpect(header().string(AuthController.XSRF_HEADER_NAME, csrfToken))
+                .andExpect(cookie().exists(RefreshCookieService.COOKIE_NAME))
+                .andExpect(jsonPath("$.accessToken").isNotEmpty())
+                .andExpect(jsonPath("$.refreshToken").doesNotExist())
+                .andReturn();
+        Cookie rotatedRefresh = refresh.getResponse().getCookie(RefreshCookieService.COOKIE_NAME);
+        assertThat(rotatedRefresh.getValue()).isNotEqualTo(originalRefresh.getValue());
+
+        entityManager.clear();
+        RefreshSession consumedSession = refreshSessionRepository.findByTokenDigest(
+                RefreshTokenDigest.fromRawToken(originalRefresh.getValue())
+        ).orElseThrow();
+        RefreshSession successor = refreshSessionRepository.findByTokenDigest(
+                RefreshTokenDigest.fromRawToken(rotatedRefresh.getValue())
+        ).orElseThrow();
+        assertThat(consumedSession.getConsumedAt()).isNotNull();
+        assertThat(successor.getFamilyId()).isEqualTo(consumedSession.getFamilyId());
+        assertThat(successor.getExpiresAt()).isEqualTo(consumedSession.getExpiresAt());
+        assertThat(successor.getUser().getId()).isEqualTo(user.getId());
+
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                        .cookie(originalRefresh, csrfCookie)
+                        .header(AuthController.XSRF_HEADER_NAME, csrfToken))
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().doesNotExist(HttpHeaders.WWW_AUTHENTICATE))
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+                .andExpect(cookie().maxAge(RefreshCookieService.COOKIE_NAME, 0))
+                .andExpect(jsonPath("$.code").value("INVALID_REFRESH_TOKEN"));
+
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                        .cookie(rotatedRefresh, csrfCookie)
+                        .header(AuthController.XSRF_HEADER_NAME, csrfToken))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("INVALID_REFRESH_TOKEN"));
+
+        entityManager.clear();
+        assertThat(refreshSessionRepository.findByTokenDigest(
+                RefreshTokenDigest.fromRawToken(rotatedRefresh.getValue())
+        ).orElseThrow().getRevokedAt()).isNotNull();
+    }
+
+    @Test
+    void logsOutTheAuthenticatedRefreshFamilyAndClearsAuthenticationCookies() throws Exception {
+        String email = "logout-flow-" + UUID.randomUUID() + "@example.com";
+        String password = "logout flow password";
+        userRepository.saveAndFlush(User.createCustomer(
+                email,
+                passwordEncoder.encode(password),
+                "Logout Customer",
+                null
+        ));
+
+        var login = mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(loginJson(email, password)))
+                .andExpect(status().isOk())
+                .andReturn();
+        String accessToken = objectMapper.readTree(login.getResponse().getContentAsByteArray())
+                .path("accessToken")
+                .asText();
+        Cookie refreshCookie = login.getResponse().getCookie(RefreshCookieService.COOKIE_NAME);
+        Cookie csrfCookie = login.getResponse().getCookie(SecurityConfig.XSRF_COOKIE_NAME);
+        String csrfToken = login.getResponse().getHeader(AuthController.XSRF_HEADER_NAME);
+
+        mockMvc.perform(post("/api/v1/auth/logout")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                        .cookie(refreshCookie, csrfCookie)
+                        .header(AuthController.XSRF_HEADER_NAME, csrfToken))
+                .andExpect(status().isNoContent())
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+                .andExpect(cookie().maxAge(RefreshCookieService.COOKIE_NAME, 0))
+                .andExpect(cookie().maxAge(SecurityConfig.XSRF_COOKIE_NAME, 0));
+
+        assertThatThrownBy(() -> refreshTokenService.refresh(refreshCookie.getValue()))
+                .isInstanceOf(InvalidRefreshTokenException.class);
+    }
+
+    @Test
+    void concurrentRefreshReplayRevokesTheWinningSuccessor() throws Exception {
+        String email = "concurrent-refresh-" + UUID.randomUUID() + "@example.com";
+        String password = "concurrent refresh password";
+        userRepository.saveAndFlush(User.createCustomer(
+                email,
+                passwordEncoder.encode(password),
+                "Concurrent Refresh Customer",
+                null
+        ));
+        var login = mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(loginJson(email, password)))
+                .andExpect(status().isOk())
+                .andReturn();
+        String rawToken = login.getResponse()
+                .getCookie(RefreshCookieService.COOKIE_NAME)
+                .getValue();
+        RefreshSession original = refreshSessionRepository.findByTokenDigest(
+                RefreshTokenDigest.fromRawToken(rawToken)
+        ).orElseThrow();
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        CyclicBarrier barrier = new CyclicBarrier(2);
+        try {
+            Future<IssuedAuthentication> first =
+                    executor.submit(() -> rotateAfterBarrier(rawToken, barrier));
+            Future<IssuedAuthentication> second =
+                    executor.submit(() -> rotateAfterBarrier(rawToken, barrier));
+            List<IssuedAuthentication> results = Arrays.asList(
+                    first.get(20, TimeUnit.SECONDS),
+                    second.get(20, TimeUnit.SECONDS)
+            );
+
+            assertThat(results).filteredOn(result -> result != null).hasSize(1);
+            IssuedAuthentication winner = results.stream()
+                    .filter(result -> result != null)
+                    .findFirst()
+                    .orElseThrow();
+            entityManager.clear();
+            assertThat(refreshSessionRepository.findByTokenDigest(
+                    RefreshTokenDigest.fromRawToken(winner.refreshToken().value())
+            ).orElseThrow().getRevokedAt()).isNotNull();
+            assertThat(jdbcTemplate.queryForObject(
+                    """
+                            SELECT COUNT(*)
+                            FROM refresh_sessions
+                            WHERE family_id = ?
+                              AND consumed_at IS NULL
+                              AND revoked_at IS NULL
+                              AND expires_at > UTC_TIMESTAMP(6)
+                            """,
+                    Integer.class,
+                    uuidBytes(original.getFamilyId())
+            )).isZero();
+        } finally {
+            executor.shutdownNow();
+            assertThat(executor.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
+        }
     }
 
     @Test
@@ -518,7 +745,7 @@ class LyraShopApplicationTests {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
                 .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+                .andExpect(jsonPath("$.code").value("CSRF_REQUIRED"));
 
         mockMvc.perform(post("/api/v1/private")
                         .with(csrf())
@@ -543,7 +770,31 @@ class LyraShopApplicationTests {
                         HttpHeaders.ACCESS_CONTROL_ALLOW_HEADERS,
                         containsStringIgnoringCase(HttpHeaders.CONTENT_TYPE)
                 ))
-                .andExpect(header().doesNotExist(HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS));
+                .andExpect(header().string(
+                        HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS,
+                        "true"
+                ));
+
+        mockMvc.perform(options("/api/v1/auth/refresh")
+                        .header(HttpHeaders.ORIGIN, "https://shop.example.test")
+                        .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, HttpMethod.POST.name())
+                        .header(
+                                HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS,
+                                AuthController.XSRF_HEADER_NAME
+                        ))
+                .andExpect(status().isOk())
+                .andExpect(header().string(
+                        HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN,
+                        "https://shop.example.test"
+                ))
+                .andExpect(header().string(
+                        HttpHeaders.ACCESS_CONTROL_ALLOW_HEADERS,
+                        containsStringIgnoringCase(AuthController.XSRF_HEADER_NAME)
+                ))
+                .andExpect(header().string(
+                        HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS,
+                        "true"
+                ));
 
         mockMvc.perform(options("/api/v1/auth/register")
                         .header(HttpHeaders.ORIGIN, "https://attacker.example.test")
@@ -654,7 +905,7 @@ class LyraShopApplicationTests {
                 normalizedEmail
         )).isEqualTo(16);
 
-        String rawToken = "raw-refresh-token-" + UUID.randomUUID();
+        String rawToken = rawRefreshToken();
         RefreshTokenDigest tokenDigest = RefreshTokenDigest.fromRawToken(rawToken);
         UUID familyId = UUID.randomUUID();
         Instant expiresAt = Instant.now().plus(7, ChronoUnit.DAYS).truncatedTo(ChronoUnit.MICROS);
@@ -729,9 +980,7 @@ class LyraShopApplicationTests {
                 "Token Consumer",
                 null
         ));
-        RefreshTokenDigest tokenDigest = RefreshTokenDigest.fromRawToken(
-                "consume-token-" + UUID.randomUUID()
-        );
+        RefreshTokenDigest tokenDigest = RefreshTokenDigest.fromRawToken(rawRefreshToken());
         RefreshSession session = refreshSessionRepository.saveAndFlush(RefreshSession.issue(
                 user,
                 UUID.randomUUID(),
@@ -770,9 +1019,7 @@ class LyraShopApplicationTests {
                 "Duplicate Token",
                 null
         ));
-        RefreshTokenDigest tokenDigest = RefreshTokenDigest.fromRawToken(
-                "duplicate-token-" + UUID.randomUUID()
-        );
+        RefreshTokenDigest tokenDigest = RefreshTokenDigest.fromRawToken(rawRefreshToken());
         Instant expiresAt = Instant.now().plus(7, ChronoUnit.DAYS);
 
         refreshSessionRepository.saveAndFlush(
@@ -799,7 +1046,7 @@ class LyraShopApplicationTests {
         assertThatThrownBy(() -> refreshSessionRepository.saveAndFlush(RefreshSession.issue(
                 user,
                 UUID.randomUUID(),
-                RefreshTokenDigest.fromRawToken("invalid-expiry-token-" + UUID.randomUUID()),
+                RefreshTokenDigest.fromRawToken(rawRefreshToken()),
                 Instant.now().minus(1, ChronoUnit.MINUTES)
         )))
                 .isInstanceOf(DataAccessException.class)
@@ -815,9 +1062,7 @@ class LyraShopApplicationTests {
                 "Inactive Customer",
                 null
         ));
-        RefreshTokenDigest expiredDigest = RefreshTokenDigest.fromRawToken(
-                "historically-expired-token-" + UUID.randomUUID()
-        );
+        RefreshTokenDigest expiredDigest = RefreshTokenDigest.fromRawToken(rawRefreshToken());
         UUID expiredSessionId = UUID.randomUUID();
 
         assertThat(jdbcTemplate.update(
@@ -839,9 +1084,7 @@ class LyraShopApplicationTests {
         assertThat(refreshSessionRepository.findActiveByTokenDigest(expiredDigest)).isEmpty();
         assertThat(refreshSessionRepository.consumeIfActive(expiredSessionId)).isZero();
 
-        RefreshTokenDigest inactiveDigest = RefreshTokenDigest.fromRawToken(
-                "inactive-user-token-" + UUID.randomUUID()
-        );
+        RefreshTokenDigest inactiveDigest = RefreshTokenDigest.fromRawToken(rawRefreshToken());
         RefreshSession inactiveSession = refreshSessionRepository.saveAndFlush(RefreshSession.issue(
                 user,
                 UUID.randomUUID(),
@@ -873,15 +1116,10 @@ class LyraShopApplicationTests {
                 null
         ));
         UUID familyId = UUID.randomUUID();
-        RefreshTokenDigest firstDigest = RefreshTokenDigest.fromRawToken(
-                "family-token-1-" + UUID.randomUUID()
-        );
-        RefreshTokenDigest secondDigest = RefreshTokenDigest.fromRawToken(
-                "family-token-2-" + UUID.randomUUID()
-        );
-        RefreshTokenDigest otherFamilyDigest = RefreshTokenDigest.fromRawToken(
-                "other-family-token-" + UUID.randomUUID()
-        );
+        RefreshTokenDigest firstDigest = RefreshTokenDigest.fromRawToken(rawRefreshToken());
+        RefreshTokenDigest secondDigest = RefreshTokenDigest.fromRawToken(rawRefreshToken());
+        RefreshTokenDigest otherFamilyDigest =
+                RefreshTokenDigest.fromRawToken(rawRefreshToken());
         Instant expiresAt = Instant.now().plus(7, ChronoUnit.DAYS);
 
         RefreshSession firstFamilySession = refreshSessionRepository.saveAndFlush(
@@ -925,7 +1163,7 @@ class LyraShopApplicationTests {
         RefreshSession validSession = refreshSessionRepository.saveAndFlush(RefreshSession.issue(
                 user,
                 UUID.randomUUID(),
-                RefreshTokenDigest.fromRawToken("cascade-token-" + UUID.randomUUID()),
+                RefreshTokenDigest.fromRawToken(rawRefreshToken()),
                 Instant.now().plus(7, ChronoUnit.DAYS)
         ));
         byte[] sessionId = uuidBytes(validSession.getId());
@@ -996,6 +1234,18 @@ class LyraShopApplicationTests {
         return result;
     }
 
+    private IssuedAuthentication rotateAfterBarrier(
+            String rawToken,
+            CyclicBarrier startBarrier
+    ) {
+        await(startBarrier);
+        try {
+            return refreshTokenService.refresh(rawToken);
+        } catch (InvalidRefreshTokenException exception) {
+            return null;
+        }
+    }
+
     private static void await(CyclicBarrier barrier) {
         try {
             barrier.await(10, TimeUnit.SECONDS);
@@ -1012,5 +1262,14 @@ class LyraShopApplicationTests {
                 .putLong(value.getMostSignificantBits())
                 .putLong(value.getLeastSignificantBits())
                 .array();
+    }
+
+    private static String rawRefreshToken() {
+        ByteBuffer entropy = ByteBuffer.allocate(32)
+                .putLong(UUID.randomUUID().getMostSignificantBits())
+                .putLong(UUID.randomUUID().getLeastSignificantBits())
+                .putLong(UUID.randomUUID().getMostSignificantBits())
+                .putLong(UUID.randomUUID().getLeastSignificantBits());
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(entropy.array());
     }
 }
