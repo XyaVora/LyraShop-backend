@@ -64,9 +64,12 @@ import com.lyrashop.auth.controller.AuthController;
 import com.lyrashop.auth.entity.RefreshSession;
 import com.lyrashop.auth.entity.RefreshTokenDigest;
 import com.lyrashop.auth.repository.RefreshSessionRepository;
+import com.lyrashop.auth.service.AccessTokenService;
 import com.lyrashop.auth.service.RefreshCookieService;
 import com.lyrashop.auth.service.IssuedAuthentication;
 import com.lyrashop.auth.service.RefreshTokenService;
+import com.lyrashop.catalog.category.entity.Category;
+import com.lyrashop.catalog.category.repository.CategoryRepository;
 import com.lyrashop.config.SecurityConfig;
 import com.lyrashop.exception.InvalidRefreshTokenException;
 import com.lyrashop.security.AccessTokenClaimsValidator;
@@ -125,6 +128,12 @@ class LyraShopApplicationTests {
 
     @Autowired
     private RefreshTokenService refreshTokenService;
+
+    @Autowired
+    private AccessTokenService accessTokenService;
+
+    @Autowired
+    private CategoryRepository categoryRepository;
 
     @Autowired
     private PlatformTransactionManager transactionManager;
@@ -849,14 +858,208 @@ class LyraShopApplicationTests {
     }
 
     @Test
+    void exposesOnlyActiveCategoriesToAnonymousClients() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        Category active = categoryRepository.saveAndFlush(Category.create(
+                "Active Category " + suffix,
+                "active-" + suffix,
+                "Visible category",
+                null
+        ));
+        Category inactive = categoryRepository.saveAndFlush(Category.create(
+                "Inactive Category " + suffix,
+                "inactive-" + suffix,
+                "Hidden category",
+                null
+        ));
+        inactive.deactivate();
+        categoryRepository.saveAndFlush(inactive);
+
+        var list = mockMvc.perform(get("/api/v1/categories"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andReturn();
+        assertThat(list.getResponse().getContentAsString())
+                .contains(active.getSlug())
+                .doesNotContain(inactive.getSlug());
+
+        mockMvc.perform(get("/api/v1/categories/{id}", active.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(active.getId()))
+                .andExpect(jsonPath("$.name").value(active.getName()))
+                .andExpect(jsonPath("$.slug").value(active.getSlug()))
+                .andExpect(jsonPath("$.description").value("Visible category"))
+                .andExpect(jsonPath("$.active").doesNotExist());
+
+        mockMvc.perform(get("/api/v1/categories/{id}", inactive.getId()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("CATEGORY_NOT_FOUND"))
+                .andExpect(jsonPath("$.path").value(
+                        "/api/v1/categories/" + inactive.getId()
+                ));
+    }
+
+    @Test
+    void enforcesCategoryAdminAuthorizationWithoutBusinessCsrf() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        String requestBody = categoryJson(
+                "Authorized Category " + suffix,
+                "authorized-" + suffix,
+                "Created by an administrator",
+                null
+        );
+
+        mockMvc.perform(post("/api/v1/admin/categories")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+
+        mockMvc.perform(post("/api/v1/admin/categories")
+                        .header(
+                                HttpHeaders.AUTHORIZATION,
+                                "Bearer " + accessTokenForRole(UserRole.CUSTOMER)
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+
+        var created = mockMvc.perform(post("/api/v1/admin/categories")
+                        .header(
+                                HttpHeaders.AUTHORIZATION,
+                                "Bearer " + accessTokenForRole(UserRole.ADMIN)
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.name").value("Authorized Category " + suffix))
+                .andExpect(jsonPath("$.slug").value("authorized-" + suffix))
+                .andExpect(jsonPath("$.active").doesNotExist())
+                .andReturn();
+
+        long categoryId = objectMapper.readTree(created.getResponse().getContentAsByteArray())
+                .path("id")
+                .asLong();
+        assertThat(categoryRepository.findByIdAndActiveTrue(categoryId)).isPresent();
+
+        mockMvc.perform(get("/api/v1/admin/not-implemented")
+                        .header(
+                                HttpHeaders.AUTHORIZATION,
+                                "Bearer " + accessTokenForRole(UserRole.ADMIN)
+                        ))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    }
+
+    @Test
+    void validatesCategoryInputAndMapsSlugConflictsSafely() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        String adminToken = accessTokenForRole(UserRole.ADMIN);
+        String slug = "duplicate-" + suffix;
+
+        mockMvc.perform(post("/api/v1/admin/categories")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(categoryJson(
+                                "First Category",
+                                slug,
+                                null,
+                                null
+                        )))
+                .andExpect(status().isCreated());
+
+        var duplicate = mockMvc.perform(post("/api/v1/admin/categories")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(categoryJson(
+                                "Duplicate Category",
+                                slug.toUpperCase(Locale.ROOT),
+                                null,
+                                null
+                        )))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CATEGORY_SLUG_ALREADY_EXISTS"))
+                .andReturn();
+        assertThat(duplicate.getResponse().getContentAsString())
+                .doesNotContain("uk_categories_slug", "Duplicate entry");
+
+        mockMvc.perform(post("/api/v1/admin/categories")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "Unknown Field",
+                                  "slug": "unknown-field",
+                                  "role": "ADMIN"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("MALFORMED_REQUEST"));
+
+        mockMvc.perform(post("/api/v1/admin/categories")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(categoryJson(
+                                "Missing Parent",
+                                "missing-parent-" + suffix,
+                                null,
+                                Long.MAX_VALUE
+                        )))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("CATEGORY_NOT_FOUND"));
+    }
+
+    @Test
+    void mapsConcurrentCategorySlugRaceToOneCreatedAndOneConflict() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        String slug = "concurrent-category-" + suffix;
+        String requestBody = categoryJson(
+                "Concurrent Category",
+                slug,
+                null,
+                null
+        );
+        String adminToken = accessTokenForRole(UserRole.ADMIN);
+        CyclicBarrier startBarrier = new CyclicBarrier(2);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+
+        try {
+            Future<Integer> first = executor.submit(() -> createCategoryAfterBarrier(
+                    requestBody,
+                    adminToken,
+                    startBarrier
+            ));
+            Future<Integer> second = executor.submit(() -> createCategoryAfterBarrier(
+                    requestBody,
+                    adminToken,
+                    startBarrier
+            ));
+
+            assertThat(List.of(
+                    first.get(30, TimeUnit.SECONDS),
+                    second.get(30, TimeUnit.SECONDS)
+            )).containsExactlyInAnyOrder(201, 409);
+        } finally {
+            executor.shutdownNow();
+        }
+
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM categories WHERE slug = ?",
+                Integer.class,
+                slug
+        )).isOne();
+    }
+
+    @Test
     void startsWithValidatedIdentityMigration() {
         var currentMigration = flyway.info().current();
 
         assertThat(MYSQL.isRunning()).isTrue();
         assertThat(jdbcTemplate.queryForObject("SELECT 1", Integer.class)).isEqualTo(1);
         assertThat(currentMigration).isNotNull();
-        assertThat(currentMigration.getVersion()).isEqualTo(MigrationVersion.fromVersion("1"));
-        assertThat(currentMigration.getDescription()).isEqualTo("create identity tables");
+        assertThat(currentMigration.getVersion()).isEqualTo(MigrationVersion.fromVersion("2"));
+        assertThat(currentMigration.getDescription()).isEqualTo("create categories");
         assertThat(currentMigration.getState()).isEqualTo(MigrationState.SUCCESS);
         assertThat(flyway.validateWithResult().validationSuccessful).isTrue();
         assertThat(flyway.migrate().migrationsExecuted).isZero();
@@ -870,11 +1073,16 @@ class LyraShopApplicationTests {
                 SELECT COUNT(*)
                 FROM information_schema.tables
                 WHERE table_schema = DATABASE()
-                  AND table_name IN ('users', 'refresh_sessions', 'flyway_schema_history')
+                  AND table_name IN (
+                      'users',
+                      'refresh_sessions',
+                      'categories',
+                      'flyway_schema_history'
+                  )
                 """,
                 Integer.class
         );
-        assertThat(expectedTables).isEqualTo(3);
+        assertThat(expectedTables).isEqualTo(4);
     }
 
     @Test
@@ -1194,6 +1402,20 @@ class LyraShopApplicationTests {
         ));
     }
 
+    private String categoryJson(
+            String name,
+            String slug,
+            String description,
+            Long parentId
+    ) throws Exception {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("name", name);
+        payload.put("slug", slug);
+        payload.put("description", description);
+        payload.put("parentId", parentId);
+        return objectMapper.writeValueAsString(payload);
+    }
+
     private static Map<String, Object> registrationPayload(
             String email,
             String password,
@@ -1220,6 +1442,45 @@ class LyraShopApplicationTests {
         } catch (Exception exception) {
             throw new IllegalStateException("concurrent registration request failed", exception);
         }
+    }
+
+    private int createCategoryAfterBarrier(
+            String requestBody,
+            String accessToken,
+            CyclicBarrier startBarrier
+    ) {
+        await(startBarrier);
+        try {
+            return mockMvc.perform(post("/api/v1/admin/categories")
+                            .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(requestBody))
+                    .andReturn()
+                    .getResponse()
+                    .getStatus();
+        } catch (Exception exception) {
+            throw new IllegalStateException("concurrent category request failed", exception);
+        }
+    }
+
+    private String accessTokenForRole(UserRole role) {
+        String email = "role-" + role.name().toLowerCase(Locale.ROOT)
+                + "-" + UUID.randomUUID() + "@example.com";
+        User user = userRepository.saveAndFlush(User.createCustomer(
+                email,
+                PASSWORD_HASH,
+                "Role Boundary",
+                null
+        ));
+        if (role == UserRole.ADMIN) {
+            assertThat(jdbcTemplate.update(
+                    "UPDATE users SET role = 'ADMIN' WHERE id = ?",
+                    uuidBytes(user.getId())
+            )).isOne();
+            entityManager.clear();
+            user = userRepository.findById(user.getId()).orElseThrow();
+        }
+        return accessTokenService.issue(user).value();
     }
 
     private int consumeAfterBarrier(UUID sessionId, CyclicBarrier startBarrier) {
