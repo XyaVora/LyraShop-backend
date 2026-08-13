@@ -75,6 +75,8 @@ import com.lyrashop.catalog.category.entity.Category;
 import com.lyrashop.catalog.category.repository.CategoryRepository;
 import com.lyrashop.catalog.product.entity.Product;
 import com.lyrashop.catalog.product.repository.ProductRepository;
+import com.lyrashop.catalog.variant.entity.ProductVariant;
+import com.lyrashop.catalog.variant.repository.ProductVariantRepository;
 import com.lyrashop.config.SecurityConfig;
 import com.lyrashop.exception.InvalidRefreshTokenException;
 import com.lyrashop.security.AccessTokenClaimsValidator;
@@ -144,7 +146,11 @@ class LyraShopApplicationTests {
     private ProductRepository productRepository;
 
     @Autowired
+    private ProductVariantRepository productVariantRepository;
+
+    @Autowired
     private PlatformTransactionManager transactionManager;
+
 
     @Autowired
     private MockMvc mockMvc;
@@ -1192,6 +1198,45 @@ class LyraShopApplicationTests {
     }
 
     @Test
+    @Transactional
+    void persistsProductVariantsWithBinaryUuidsAndProductReferences() {
+        String suffix = UUID.randomUUID().toString();
+        Category category = categoryRepository.saveAndFlush(Category.create(
+                "Variant Category " + suffix, "variant-category-" + suffix, null, null
+        ));
+        Product product = productRepository.saveAndFlush(Product.create(
+                "Variant Product " + suffix, "variant-product-" + suffix, null,
+                new BigDecimal("99.90"), category.getId()
+        ));
+        ProductVariant variant = productVariantRepository.saveAndFlush(ProductVariant.create(
+                product.getId(), " sku-" + suffix + " ", " M ", " Black ",
+                new BigDecimal("109.90"), 12
+        ));
+        UUID variantId = variant.getId();
+        entityManager.clear();
+
+        ProductVariant stored = productVariantRepository.findById(variantId).orElseThrow();
+        assertThat(stored.getProductId()).isEqualTo(product.getId());
+        assertThat(stored.getSku()).isEqualTo("SKU-" + suffix.toUpperCase(Locale.ROOT));
+        assertThat(stored.getSize()).isEqualTo("M");
+        assertThat(stored.getColor()).isEqualTo("Black");
+        assertThat(stored.getPrice()).isEqualByComparingTo("109.90");
+        assertThat(stored.getStock()).isEqualTo(12);
+        assertThat(stored.isActive()).isTrue();
+        assertThat(stored.getVersion()).isZero();
+        assertThat(stored.getCreatedAt()).isNotNull();
+        assertThat(stored.getUpdatedAt()).isNotNull();
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT OCTET_LENGTH(id) FROM product_variants WHERE sku = ?",
+                Integer.class, stored.getSku()
+        )).isEqualTo(16);
+        assertThatThrownBy(() -> ProductVariant.create(
+                product.getId(), "ß".repeat(51), "M", "Black", new BigDecimal("10.00"), 0
+        )).isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("100 characters");
+    }
+
+    @Test
     void updatesProductsForAdminsWithOptimisticVersioning() throws Exception {
         String suffix = UUID.randomUUID().toString();
         Category category = categoryRepository.saveAndFlush(Category.create(
@@ -1496,8 +1541,8 @@ class LyraShopApplicationTests {
         assertThat(MYSQL.isRunning()).isTrue();
         assertThat(jdbcTemplate.queryForObject("SELECT 1", Integer.class)).isEqualTo(1);
         assertThat(currentMigration).isNotNull();
-        assertThat(currentMigration.getVersion()).isEqualTo(MigrationVersion.fromVersion("3"));
-        assertThat(currentMigration.getDescription()).isEqualTo("create products");
+        assertThat(currentMigration.getVersion()).isEqualTo(MigrationVersion.fromVersion("4"));
+        assertThat(currentMigration.getDescription()).isEqualTo("create product variants");
         assertThat(currentMigration.getState()).isEqualTo(MigrationState.SUCCESS);
         assertThat(flyway.validateWithResult().validationSuccessful).isTrue();
         assertThat(flyway.migrate().migrationsExecuted).isZero();
@@ -1516,12 +1561,13 @@ class LyraShopApplicationTests {
                       'refresh_sessions',
                       'categories',
                       'products',
+                      'product_variants',
                       'flyway_schema_history'
                   )
                 """,
                 Integer.class
         );
-        assertThat(expectedTables).isEqualTo(5);
+        assertThat(expectedTables).isEqualTo(6);
     }
 
     @Test
