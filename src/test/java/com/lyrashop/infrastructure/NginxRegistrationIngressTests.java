@@ -129,6 +129,7 @@ class NginxRegistrationIngressTests {
                             "client_max_body_size 1024;",
                             "location = /api/v1/admin/categories",
                             "location = /api/v1/admin/products",
+                            "location ~ ^/api/v1/admin/products/[0-9a-fA-F-]+/deactivate$",
                             "location = /api/v1/auth/login",
                             "location = /api/v1/auth/refresh",
                             "location = /api/v1/auth/logout",

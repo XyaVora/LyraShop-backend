@@ -8,6 +8,7 @@ import static org.hamcrest.Matchers.not;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.cookie;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -1187,6 +1188,64 @@ class LyraShopApplicationTests {
                 Integer.class,
                 stored.getSlug()
         )).isEqualTo(16);
+    }
+
+    @Test
+    void deactivatesProductsForAdminsAndHidesThemIdempotently() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        Category category = categoryRepository.saveAndFlush(Category.create(
+                "Deactivate Category " + suffix,
+                "deactivate-category-" + suffix,
+                null,
+                null
+        ));
+        Product product = productRepository.saveAndFlush(Product.create(
+                "Deactivate Product " + suffix,
+                "deactivate-product-" + suffix,
+                "To be hidden",
+                new BigDecimal("20.00"),
+                category.getId()
+        ));
+        String path = "/api/v1/admin/products/" + product.getId() + "/deactivate";
+
+        mockMvc.perform(patch(path))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+        mockMvc.perform(patch(path)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessTokenForRole(UserRole.CUSTOMER)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+
+        String adminToken = accessTokenForRole(UserRole.ADMIN);
+        mockMvc.perform(patch(path)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isNoContent())
+                .andExpect(content().string(emptyString()));
+
+        entityManager.clear();
+        Product deactivated = productRepository.findById(product.getId()).orElseThrow();
+        assertThat(deactivated.isActive()).isFalse();
+        assertThat(deactivated.getVersion()).isEqualTo(1L);
+        mockMvc.perform(get("/api/v1/products/" + product.getId()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("PRODUCT_NOT_FOUND"));
+        mockMvc.perform(patch(path)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isNoContent());
+        assertThat(productRepository.findById(product.getId()).orElseThrow().isActive()).isFalse();
+    }
+
+    @Test
+    void returnsProductNotFoundForMalformedOrMissingDeactivateIds() throws Exception {
+        String adminToken = accessTokenForRole(UserRole.ADMIN);
+        mockMvc.perform(patch("/api/v1/admin/products/not-a-uuid/deactivate")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("PRODUCT_NOT_FOUND"));
+        mockMvc.perform(patch("/api/v1/admin/products/00000000-0000-0000-0000-000000000000/deactivate")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("PRODUCT_NOT_FOUND"));
     }
 
     @Test
