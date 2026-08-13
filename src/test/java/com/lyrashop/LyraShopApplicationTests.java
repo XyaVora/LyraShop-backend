@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.cookie;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -1191,6 +1192,47 @@ class LyraShopApplicationTests {
     }
 
     @Test
+    void updatesProductsForAdminsWithOptimisticVersioning() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        Category category = categoryRepository.saveAndFlush(Category.create(
+                "Update Category " + suffix, "update-category-" + suffix, null, null
+        ));
+        Product product = productRepository.saveAndFlush(Product.create(
+                "Before " + suffix, "before-" + suffix, null,
+                new BigDecimal("10.00"), category.getId()
+        ));
+        String path = "/api/v1/admin/products/" + product.getId();
+        String body = updateProductJson(
+                "After " + suffix, "after-" + suffix, "Updated",
+                "20.00", category.getId(), product.getVersion()
+        );
+
+        mockMvc.perform(put(path).contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(put(path)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessTokenForRole(UserRole.CUSTOMER))
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isForbidden());
+        String adminToken = accessTokenForRole(UserRole.ADMIN);
+        mockMvc.perform(put(path)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("After " + suffix))
+                .andExpect(jsonPath("$.version").doesNotExist());
+
+        entityManager.clear();
+        Product updated = productRepository.findById(product.getId()).orElseThrow();
+        assertThat(updated.getVersion()).isEqualTo(1L);
+        assertThat(updated.getBasePrice()).isEqualByComparingTo("20.00");
+        mockMvc.perform(put(path)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("PRODUCT_VERSION_CONFLICT"));
+    }
+
+    @Test
     void deactivatesProductsForAdminsAndHidesThemIdempotently() throws Exception {
         String suffix = UUID.randomUUID().toString();
         Category category = categoryRepository.saveAndFlush(Category.create(
@@ -1813,12 +1855,22 @@ class LyraShopApplicationTests {
         return objectMapper.writeValueAsString(payload);
     }
 
+    private String updateProductJson(
+            String name, String slug, String description, String basePrice,
+            Long categoryId, long version
+    ) throws Exception {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("name", name);
+        payload.put("slug", slug);
+        payload.put("description", description);
+        payload.put("basePrice", new BigDecimal(basePrice));
+        payload.put("categoryId", categoryId);
+        payload.put("version", version);
+        return objectMapper.writeValueAsString(payload);
+    }
+
     private String productJson(
-            String name,
-            String slug,
-            String description,
-            String basePrice,
-            Long categoryId
+            String name, String slug, String description, String basePrice, Long categoryId
     ) throws Exception {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("name", name);

@@ -37,7 +37,8 @@ class SecurityConfigTests {
                 .containsExactly(
                         HttpMethod.GET.name(),
                         HttpMethod.POST.name(),
-                        HttpMethod.PATCH.name()
+                        HttpMethod.PATCH.name(),
+                        HttpMethod.PUT.name()
                 );
         assertThat(configuration.getAllowedHeaders()).contains(
                 HttpHeaders.ACCEPT,

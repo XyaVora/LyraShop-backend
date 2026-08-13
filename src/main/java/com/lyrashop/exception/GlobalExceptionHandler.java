@@ -20,6 +20,7 @@ import com.lyrashop.catalog.product.service.ProductCategoryNotFoundException;
 import com.lyrashop.catalog.product.service.ProductNotFoundException;
 import com.lyrashop.catalog.product.service.ProductQueryException;
 import com.lyrashop.catalog.product.service.ProductSlugAlreadyExistsException;
+import com.lyrashop.catalog.product.service.ProductVersionConflictException;
 
 import jakarta.servlet.http.HttpServletRequest;
 
@@ -166,6 +167,19 @@ public class GlobalExceptionHandler {
                         request.getRequestURI()
                 )
         );
+    }
+
+    @ExceptionHandler(ProductVersionConflictException.class)
+    ResponseEntity<ApiErrorResponse> handleProductVersionConflict(
+            ProductVersionConflictException exception,
+            HttpServletRequest request
+    ) {
+        return problem(HttpStatus.CONFLICT, ApiErrorResponse.of(
+                HttpStatus.CONFLICT.value(),
+                "PRODUCT_VERSION_CONFLICT",
+                "Product was modified by another request",
+                request.getRequestURI()
+        ));
     }
 
     @ExceptionHandler(ProductQueryException.class)

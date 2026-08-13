@@ -101,6 +101,21 @@ public class Product {
     public void deactivate() {
         this.active = false;
     }
+
+    public void update(
+            String name,
+            String slug,
+            String description,
+            BigDecimal basePrice,
+            Long categoryId
+    ) {
+        this.name = normalizeText(name, "name", 255);
+        this.slug = normalizeSlug(slug);
+        this.description = normalizeNullable(description, 2_000);
+        this.basePrice = normalizePrice(basePrice);
+        this.categoryId = requirePositive(categoryId, "categoryId");
+    }
+
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
     public long getVersion() { return version; }
