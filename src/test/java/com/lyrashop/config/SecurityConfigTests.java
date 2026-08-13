@@ -34,7 +34,11 @@ class SecurityConfigTests {
         assertThat(configuration.getAllowedOrigins())
                 .containsExactly("https://shop.example.test");
         assertThat(configuration.getAllowedMethods())
-                .containsExactly(HttpMethod.GET.name(), HttpMethod.POST.name());
+                .containsExactly(
+                        HttpMethod.GET.name(),
+                        HttpMethod.POST.name(),
+                        HttpMethod.PATCH.name()
+                );
         assertThat(configuration.getAllowedHeaders()).contains(
                 HttpHeaders.ACCEPT,
                 HttpHeaders.AUTHORIZATION,

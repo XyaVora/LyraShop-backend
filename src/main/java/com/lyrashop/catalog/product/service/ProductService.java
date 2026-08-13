@@ -61,6 +61,14 @@ public class ProductService {
         }
     }
 
+    @Transactional
+    public void deactivate(UUID id) {
+        Product product = productRepository.findById(id)
+                .orElseThrow(ProductNotFoundException::new);
+        product.deactivate();
+        productRepository.saveAndFlush(product);
+    }
+
     @Transactional(readOnly = true)
     public Page<ProductResult> list(ProductQuery query) {
         PageRequest pageable = PageRequest.of(query.page(), query.size(), query.sort().toSort());
