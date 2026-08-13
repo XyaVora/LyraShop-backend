@@ -275,7 +275,7 @@ server {
         proxy_pass http://lyrashop_backend;
     }
 
- {
+    location @logout_rate_limited {
         internal;
         default_type application/problem+json;
         add_header Access-Control-Allow-Origin $cors_allow_origin always;

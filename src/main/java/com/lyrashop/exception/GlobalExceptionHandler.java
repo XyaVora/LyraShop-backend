@@ -182,6 +182,7 @@ public class GlobalExceptionHandler {
         ));
     }
 
+    @ExceptionHandler(ProductQueryException.class)
     ResponseEntity<ApiErrorResponse> handleProductQuery(
             ProductQueryException exception,
             HttpServletRequest request
