@@ -1541,8 +1541,8 @@ class LyraShopApplicationTests {
         assertThat(MYSQL.isRunning()).isTrue();
         assertThat(jdbcTemplate.queryForObject("SELECT 1", Integer.class)).isEqualTo(1);
         assertThat(currentMigration).isNotNull();
-        assertThat(currentMigration.getVersion()).isEqualTo(MigrationVersion.fromVersion("3"));
-        assertThat(currentMigration.getDescription()).isEqualTo("create products");
+        assertThat(currentMigration.getVersion()).isEqualTo(MigrationVersion.fromVersion("4"));
+        assertThat(currentMigration.getDescription()).isEqualTo("create product variants");
         assertThat(currentMigration.getState()).isEqualTo(MigrationState.SUCCESS);
         assertThat(flyway.validateWithResult().validationSuccessful).isTrue();
         assertThat(flyway.migrate().migrationsExecuted).isZero();
@@ -1561,12 +1561,13 @@ class LyraShopApplicationTests {
                       'refresh_sessions',
                       'categories',
                       'products',
+                      'product_variants',
                       'flyway_schema_history'
                   )
                 """,
                 Integer.class
         );
-        assertThat(expectedTables).isEqualTo(5);
+        assertThat(expectedTables).isEqualTo(6);
     }
 
     @Test
