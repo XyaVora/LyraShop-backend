@@ -1,0 +1,26 @@
+CREATE TABLE product_variants (
+    id BINARY(16) NOT NULL,
+    product_id BINARY(16) NOT NULL,
+    sku VARCHAR(100) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    size VARCHAR(20) NOT NULL,
+    color VARCHAR(50) NOT NULL,
+    price DECIMAL(12,2) NOT NULL,
+    stock INT NOT NULL DEFAULT 0,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    version BIGINT NOT NULL DEFAULT 0,
+    created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    CONSTRAINT pk_product_variants PRIMARY KEY (id),
+    CONSTRAINT uk_product_variants_sku UNIQUE (sku),
+    CONSTRAINT fk_product_variants_product
+        FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE RESTRICT,
+    CONSTRAINT chk_product_variants_sku_not_blank CHECK (CHAR_LENGTH(TRIM(sku)) > 0),
+    CONSTRAINT chk_product_variants_size_not_blank CHECK (CHAR_LENGTH(TRIM(size)) > 0),
+    CONSTRAINT chk_product_variants_color_not_blank CHECK (CHAR_LENGTH(TRIM(color)) > 0),
+    CONSTRAINT chk_product_variants_price CHECK (price >= 0),
+    CONSTRAINT chk_product_variants_stock CHECK (stock >= 0),
+    CONSTRAINT chk_product_variants_active CHECK (is_active IN (0, 1)),
+    CONSTRAINT chk_product_variants_version CHECK (version >= 0),
+    INDEX idx_product_variants_product_active (product_id, is_active, id),
+    INDEX idx_product_variants_active_stock (is_active, stock, id)
+) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
