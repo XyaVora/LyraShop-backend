@@ -105,6 +105,9 @@ public class ProductVariant {
 
     private static String normalizeSku(String value) {
         String normalized = normalizeText(value, "sku", 100).toUpperCase(Locale.ROOT);
+        if (normalized.length() > 100) {
+            throw new IllegalArgumentException("sku must not exceed 100 characters");
+        }
         if (!normalized.matches("[A-Z0-9]+(?:-[A-Z0-9]+)*")) {
             throw new IllegalArgumentException("sku must contain letters, digits, and hyphens");
         }

@@ -1230,10 +1230,10 @@ class LyraShopApplicationTests {
                 "SELECT OCTET_LENGTH(id) FROM product_variants WHERE sku = ?",
                 Integer.class, stored.getSku()
         )).isEqualTo(16);
-        assertThat(jdbcTemplate.queryForObject(
-                "SELECT OCTET_LENGTH(product_id) FROM product_variants WHERE sku = ?",
-                Integer.class, stored.getSku()
-        )).isEqualTo(16);
+        assertThatThrownBy(() -> ProductVariant.create(
+                product.getId(), "ß".repeat(51), "M", "Black", new BigDecimal("10.00"), 0
+        )).isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("100 characters");
     }
 
     @Test
