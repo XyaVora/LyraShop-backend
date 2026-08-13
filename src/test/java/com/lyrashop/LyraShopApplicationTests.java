@@ -1198,6 +1198,44 @@ class LyraShopApplicationTests {
     }
 
     @Test
+    void createsProductVariantsForAdminsAndRejectsDuplicateSkus() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        Category category = categoryRepository.saveAndFlush(Category.create(
+                "Variant API Category " + suffix, "variant-api-category-" + suffix, null, null
+        ));
+        Product product = productRepository.saveAndFlush(Product.create(
+                "Variant API Product " + suffix, "variant-api-product-" + suffix, null,
+                new BigDecimal("50.00"), category.getId()
+        ));
+        String path = "/api/v1/admin/products/" + product.getId() + "/variants";
+        String body = objectMapper.writeValueAsString(Map.of(
+                "sku", "api-" + suffix, "size", " M ", "color", " Black ",
+                "price", new BigDecimal("55.00"), "stock", 8
+        ));
+
+        mockMvc.perform(post(path).contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(post(path)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessTokenForRole(UserRole.CUSTOMER))
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isForbidden());
+        String adminToken = accessTokenForRole(UserRole.ADMIN);
+        mockMvc.perform(post(path)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.sku").value("API-" + suffix.toUpperCase(Locale.ROOT)))
+                .andExpect(jsonPath("$.size").value("M"))
+                .andExpect(jsonPath("$.active").doesNotExist())
+                .andExpect(jsonPath("$.version").doesNotExist());
+        mockMvc.perform(post(path)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("VARIANT_SKU_ALREADY_EXISTS"));
+    }
+
+    @Test
     @Transactional
     void persistsProductVariantsWithBinaryUuidsAndProductReferences() {
         String suffix = UUID.randomUUID().toString();

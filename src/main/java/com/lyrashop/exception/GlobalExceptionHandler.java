@@ -22,6 +22,9 @@ import com.lyrashop.catalog.product.service.ProductQueryException;
 import com.lyrashop.catalog.product.service.ProductSlugAlreadyExistsException;
 import com.lyrashop.catalog.product.service.ProductVersionConflictException;
 
+import com.lyrashop.catalog.variant.service.VariantProductNotFoundException;
+import com.lyrashop.catalog.variant.service.VariantSkuAlreadyExistsException;
+
 import jakarta.servlet.http.HttpServletRequest;
 
 @RestControllerAdvice
@@ -281,7 +284,11 @@ public class GlobalExceptionHandler {
                 ));
     }
 
-    @ExceptionHandler(Exception.class)
+    @ExceptionHandler(VariantProductNotFoundException.class)
+    ResponseEntity<ApiErrorResponse> handleVariantProductNotFound(VariantProductNotFoundException e, HttpServletRequest r){return problem(HttpStatus.NOT_FOUND,ApiErrorResponse.of(404,"VARIANT_PRODUCT_NOT_FOUND","Variant product was not found",r.getRequestURI()));}
+    @ExceptionHandler(VariantSkuAlreadyExistsException.class)
+    ResponseEntity<ApiErrorResponse> handleVariantSku(VariantSkuAlreadyExistsException e,HttpServletRequest r){return problem(HttpStatus.CONFLICT,ApiErrorResponse.of(409,"VARIANT_SKU_ALREADY_EXISTS","A variant with this SKU already exists",r.getRequestURI()));}
+
     ResponseEntity<ApiErrorResponse> handleUnexpected(
             Exception exception,
             HttpServletRequest request
