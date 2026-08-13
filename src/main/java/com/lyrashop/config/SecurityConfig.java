@@ -105,6 +105,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/products", "/api/v1/products/*").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/admin/categories")
                         .hasRole(UserRole.ADMIN.name())
+                        .requestMatchers(HttpMethod.POST, "/api/v1/admin/products")
+                        .hasRole(UserRole.ADMIN.name())
                         .anyRequest().denyAll()
                 );
 

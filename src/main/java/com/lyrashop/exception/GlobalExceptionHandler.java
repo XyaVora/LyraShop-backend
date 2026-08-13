@@ -16,8 +16,10 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import com.lyrashop.auth.service.RefreshCookieService;
+import com.lyrashop.catalog.product.service.ProductCategoryNotFoundException;
 import com.lyrashop.catalog.product.service.ProductNotFoundException;
 import com.lyrashop.catalog.product.service.ProductQueryException;
+import com.lyrashop.catalog.product.service.ProductSlugAlreadyExistsException;
 
 import jakarta.servlet.http.HttpServletRequest;
 
@@ -129,6 +131,38 @@ public class GlobalExceptionHandler {
                         HttpStatus.NOT_FOUND.value(),
                         "PRODUCT_NOT_FOUND",
                         "Product was not found",
+                        request.getRequestURI()
+                )
+        );
+    }
+
+    @ExceptionHandler(ProductCategoryNotFoundException.class)
+    ResponseEntity<ApiErrorResponse> handleProductCategoryNotFound(
+            ProductCategoryNotFoundException exception,
+            HttpServletRequest request
+    ) {
+        return problem(
+                HttpStatus.NOT_FOUND,
+                ApiErrorResponse.of(
+                        HttpStatus.NOT_FOUND.value(),
+                        "PRODUCT_CATEGORY_NOT_FOUND",
+                        "Product category was not found",
+                        request.getRequestURI()
+                )
+        );
+    }
+
+    @ExceptionHandler(ProductSlugAlreadyExistsException.class)
+    ResponseEntity<ApiErrorResponse> handleDuplicateProductSlug(
+            ProductSlugAlreadyExistsException exception,
+            HttpServletRequest request
+    ) {
+        return problem(
+                HttpStatus.CONFLICT,
+                ApiErrorResponse.of(
+                        HttpStatus.CONFLICT.value(),
+                        "PRODUCT_SLUG_ALREADY_EXISTS",
+                        "A product with this slug already exists",
                         request.getRequestURI()
                 )
         );

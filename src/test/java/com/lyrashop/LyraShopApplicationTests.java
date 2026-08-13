@@ -1058,6 +1058,100 @@ class LyraShopApplicationTests {
     }
 
     @Test
+    void enforcesProductAdminAuthorizationAndCreatesOnlyAnAllowlistedProduct() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        Category category = categoryRepository.saveAndFlush(Category.create(
+                "Admin Product Category " + suffix,
+                "admin-product-category-" + suffix,
+                null,
+                null
+        ));
+        String requestBody = productJson(
+                "Admin Product " + suffix,
+                "admin-product-" + suffix,
+                "Created product",
+                "199.90",
+                category.getId()
+        );
+
+        mockMvc.perform(post("/api/v1/admin/products")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+
+        mockMvc.perform(post("/api/v1/admin/products")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessTokenForRole(UserRole.CUSTOMER))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+
+        var created = mockMvc.perform(post("/api/v1/admin/products")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessTokenForRole(UserRole.ADMIN))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.name").value("Admin Product " + suffix))
+                .andExpect(jsonPath("$.slug").value("admin-product-" + suffix))
+                .andExpect(jsonPath("$.basePrice").value(199.90))
+                .andExpect(jsonPath("$.active").doesNotExist())
+                .andExpect(jsonPath("$.version").doesNotExist())
+                .andReturn();
+
+        UUID productId = UUID.fromString(objectMapper.readTree(
+                created.getResponse().getContentAsByteArray()
+        ).path("id").asText());
+        assertThat(productRepository.findById(productId)).isPresent();
+    }
+
+    @Test
+    void validatesProductCategoryAndSlugConflictsWithoutLeakingDetails() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        String adminToken = accessTokenForRole(UserRole.ADMIN);
+        Category category = categoryRepository.saveAndFlush(Category.create(
+                "Product Validation Category " + suffix,
+                "product-validation-category-" + suffix,
+                null,
+                null
+        ));
+        String slug = "validated-product-" + suffix;
+
+        mockMvc.perform(post("/api/v1/admin/products")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(productJson("First Product", slug, null, "10.00", category.getId())))
+                .andExpect(status().isCreated());
+
+        var duplicate = mockMvc.perform(post("/api/v1/admin/products")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(productJson("Duplicate Product", slug.toUpperCase(Locale.ROOT), null, "10.00", category.getId())))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("PRODUCT_SLUG_ALREADY_EXISTS"))
+                .andReturn();
+        assertThat(duplicate.getResponse().getContentAsString())
+                .doesNotContain("uk_products_slug", "Duplicate entry");
+
+        mockMvc.perform(post("/api/v1/admin/products")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(productJson("Missing Category", "missing-category-" + suffix, null, "10.00", Long.MAX_VALUE)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("PRODUCT_CATEGORY_NOT_FOUND"));
+
+        category.deactivate();
+        categoryRepository.saveAndFlush(category);
+        mockMvc.perform(post("/api/v1/admin/products")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(productJson("Invalid Price", "invalid-price-" + suffix, null, "10.123", category.getId())))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.fieldErrors.basePrice").exists());
+    }
+
+    @Test
     @Transactional
     void persistsProductsWithBinaryUuidsAndCategoryReferences() {
         String suffix = UUID.randomUUID().toString();
@@ -1657,6 +1751,22 @@ class LyraShopApplicationTests {
         payload.put("slug", slug);
         payload.put("description", description);
         payload.put("parentId", parentId);
+        return objectMapper.writeValueAsString(payload);
+    }
+
+    private String productJson(
+            String name,
+            String slug,
+            String description,
+            String basePrice,
+            Long categoryId
+    ) throws Exception {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("name", name);
+        payload.put("slug", slug);
+        payload.put("description", description);
+        payload.put("basePrice", new BigDecimal(basePrice));
+        payload.put("categoryId", categoryId);
         return objectMapper.writeValueAsString(payload);
     }
 

@@ -40,7 +40,9 @@ public class AuthenticationRequestBodyLimitFilter extends OncePerRequestFilter {
     );
     private static final RequestMatcher BUSINESS_REQUEST = new OrRequestMatcher(
             PathPatternRequestMatcher.withDefaults()
-                    .matcher(HttpMethod.POST, "/api/v1/admin/categories")
+                    .matcher(HttpMethod.POST, "/api/v1/admin/categories"),
+            PathPatternRequestMatcher.withDefaults()
+                    .matcher(HttpMethod.POST, "/api/v1/admin/products")
     );
 
     private final int authenticationMaxRequestBodyBytes;
