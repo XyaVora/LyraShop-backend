@@ -107,6 +107,8 @@ public class SecurityConfig {
                         .hasRole(UserRole.ADMIN.name())
                         .requestMatchers(HttpMethod.POST, "/api/v1/admin/products")
                         .hasRole(UserRole.ADMIN.name())
+                        .requestMatchers(HttpMethod.PUT, "/api/v1/admin/products/{id}")
+                        .hasRole(UserRole.ADMIN.name())
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/admin/products/{id}/deactivate")
                         .hasRole(UserRole.ADMIN.name())
                         .anyRequest().denyAll()
@@ -150,7 +152,8 @@ public class SecurityConfig {
         configuration.setAllowedMethods(List.of(
                 HttpMethod.GET.name(),
                 HttpMethod.POST.name(),
-                HttpMethod.PATCH.name()
+                HttpMethod.PATCH.name(),
+                HttpMethod.PUT.name()
         ));
         configuration.setAllowedHeaders(List.of(
                 HttpHeaders.ACCEPT,

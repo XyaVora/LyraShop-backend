@@ -27,6 +27,7 @@ class AuthenticationRequestBodyLimitFilterTests {
     private static final String ADMIN_CATEGORY_PATH = "/api/v1/admin/categories";
     private static final String ADMIN_PRODUCT_PATH = "/api/v1/admin/products";
     private static final String ADMIN_PRODUCT_DEACTIVATE_PATH = "/api/v1/admin/products/00000000-0000-0000-0000-000000000000/deactivate";
+    private static final String ADMIN_PRODUCT_UPDATE_PATH = "/api/v1/admin/products/00000000-0000-0000-0000-000000000000";
     private static final int BODY_LIMIT = 16;
     private static final int BUSINESS_BODY_LIMIT = 32;
 
@@ -126,12 +127,14 @@ class AuthenticationRequestBodyLimitFilterTests {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {ADMIN_CATEGORY_PATH, ADMIN_PRODUCT_PATH, ADMIN_PRODUCT_DEACTIVATE_PATH})
+    @ValueSource(strings = {ADMIN_CATEGORY_PATH, ADMIN_PRODUCT_PATH, ADMIN_PRODUCT_DEACTIVATE_PATH, ADMIN_PRODUCT_UPDATE_PATH})
     void appliesBusinessBodyLimitToAdminCreation(String path) throws Exception {
         byte[] body = "x".repeat(BUSINESS_BODY_LIMIT + 1).getBytes(StandardCharsets.UTF_8);
         MockHttpServletRequest request = request(body, body.length, path);
         if (ADMIN_PRODUCT_DEACTIVATE_PATH.equals(path)) {
             request.setMethod("PATCH");
+        } else if (ADMIN_PRODUCT_UPDATE_PATH.equals(path)) {
+            request.setMethod("PUT");
         }
         MockHttpServletResponse response = new MockHttpServletResponse();
 

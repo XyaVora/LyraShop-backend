@@ -12,12 +12,14 @@ import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.lyrashop.catalog.category.entity.Category;
 import com.lyrashop.catalog.category.repository.CategoryRepository;
 import com.lyrashop.catalog.product.dto.CreateProductRequest;
+import com.lyrashop.catalog.product.dto.UpdateProductRequest;
 import com.lyrashop.catalog.product.entity.Product;
 import com.lyrashop.catalog.product.repository.ProductRepository;
 
@@ -58,6 +60,35 @@ public class ProductService {
                 throw new ProductSlugAlreadyExistsException(exception);
             }
             throw exception;
+        }
+    }
+
+    @Transactional
+    public ProductResult update(UUID id, UpdateProductRequest request) {
+        Product product = productRepository.findById(id)
+                .orElseThrow(ProductNotFoundException::new);
+        if (product.getVersion() != request.version()) {
+            throw new ProductVersionConflictException();
+        }
+        if (!categoryRepository.existsByIdAndActiveTrue(request.categoryId())) {
+            throw new ProductCategoryNotFoundException();
+        }
+        if (productRepository.existsBySlugAndIdNot(request.slug(), id)) {
+            throw new ProductSlugAlreadyExistsException();
+        }
+        product.update(
+                request.name(), request.slug(), request.description(),
+                request.basePrice(), request.categoryId()
+        );
+        try {
+            return ProductResult.from(productRepository.saveAndFlush(product));
+        } catch (DataIntegrityViolationException exception) {
+            if (isSlugUniqueViolation(exception)) {
+                throw new ProductSlugAlreadyExistsException(exception);
+            }
+            throw exception;
+        } catch (ObjectOptimisticLockingFailureException exception) {
+            throw new ProductVersionConflictException(exception);
         }
     }
 
