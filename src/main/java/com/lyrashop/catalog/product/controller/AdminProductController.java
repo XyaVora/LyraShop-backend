@@ -63,6 +63,8 @@ public class AdminProductController {
         }
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
+    @PatchMapping(path = "/{id}/deactivate")
     public ResponseEntity<Void> deactivate(@PathVariable String id) {
         try {
             productService.deactivate(UUID.fromString(id));
