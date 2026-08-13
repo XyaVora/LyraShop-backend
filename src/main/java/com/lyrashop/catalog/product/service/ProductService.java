@@ -1,8 +1,15 @@
 package com.lyrashop.catalog.product.service;
 
+import java.sql.SQLException;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 
+import org.hibernate.exception.ConstraintViolationException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -10,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.lyrashop.catalog.category.entity.Category;
 import com.lyrashop.catalog.category.repository.CategoryRepository;
+import com.lyrashop.catalog.product.dto.CreateProductRequest;
 import com.lyrashop.catalog.product.entity.Product;
 import com.lyrashop.catalog.product.repository.ProductRepository;
 
@@ -25,6 +33,32 @@ public class ProductService {
     ) {
         this.productRepository = productRepository;
         this.categoryRepository = categoryRepository;
+    }
+
+    @Transactional
+    public ProductResult create(CreateProductRequest request) {
+        if (!categoryRepository.existsByIdAndActiveTrue(request.categoryId())) {
+            throw new ProductCategoryNotFoundException();
+        }
+        if (productRepository.existsBySlug(request.slug())) {
+            throw new ProductSlugAlreadyExistsException();
+        }
+
+        Product product = Product.create(
+                request.name(),
+                request.slug(),
+                request.description(),
+                request.basePrice(),
+                request.categoryId()
+        );
+        try {
+            return ProductResult.from(productRepository.saveAndFlush(product));
+        } catch (DataIntegrityViolationException exception) {
+            if (isSlugUniqueViolation(exception)) {
+                throw new ProductSlugAlreadyExistsException(exception);
+            }
+            throw exception;
+        }
     }
 
     @Transactional(readOnly = true)
@@ -51,6 +85,43 @@ public class ProductService {
             specification = specification.and(ProductSpecifications.categoryId(categoryId));
         }
         return productRepository.findAll(specification, pageable).map(ProductResult::from);
+    }
+
+    private static boolean isSlugUniqueViolation(Throwable failure) {
+        Set<Throwable> visited = Collections.newSetFromMap(new IdentityHashMap<>());
+        Throwable current = failure;
+
+        while (current != null && visited.add(current)) {
+            if (current instanceof ConstraintViolationException violation
+                    && violation.getKind() == ConstraintViolationException.ConstraintKind.UNIQUE
+                    && isSlugConstraint(violation.getConstraintName())) {
+                return true;
+            }
+            if (current instanceof SQLException sqlException
+                    && sqlException.getErrorCode() == 1062
+                    && "23000".equals(sqlException.getSQLState())
+                    && containsSlugConstraint(sqlException.getMessage())) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
+    private static boolean isSlugConstraint(String constraintName) {
+        if (constraintName == null) {
+            return false;
+        }
+        String normalized = constraintName
+                .replace(String.valueOf((char) 96), "")
+                .replace(String.valueOf((char) 34), "")
+                .toLowerCase(Locale.ROOT);
+        return normalized.equals("uk_products_slug")
+                || normalized.endsWith(".uk_products_slug");
+    }
+
+    private static boolean containsSlugConstraint(String message) {
+        return message != null && message.toLowerCase(Locale.ROOT).contains("uk_products_slug");
     }
 
     @Transactional(readOnly = true)

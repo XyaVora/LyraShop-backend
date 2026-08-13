@@ -104,6 +104,10 @@ class SecurityConfigTests {
                 "/api/v1/auth/login"
         ))).isFalse();
         assertThat(SecurityConfig.COOKIE_CSRF_REQUEST.matches(request(
+                HttpMethod.POST,
+                "/api/v1/admin/products"
+        ))).isFalse();
+        assertThat(SecurityConfig.COOKIE_CSRF_REQUEST.matches(request(
                 HttpMethod.GET,
                 "/api/v1/auth/refresh"
         ))).isFalse();

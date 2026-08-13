@@ -59,6 +59,7 @@ class NginxRegistrationIngressTests {
     private static final String LOGIN_PATH = "/api/v1/auth/login";
     private static final String REFRESH_PATH = "/api/v1/auth/refresh";
     private static final String LOGOUT_PATH = "/api/v1/auth/logout";
+    private static final String ADMIN_PRODUCT_PATH = "/api/v1/admin/products";
     private static final Network NETWORK = Network.newNetwork();
     private static final GenericContainer<?> UPSTREAM_A = upstream("a");
     private static final GenericContainer<?> UPSTREAM_B = upstream("b");
@@ -127,6 +128,7 @@ class NginxRegistrationIngressTests {
                             "client_max_body_size 4096;",
                             "client_max_body_size 1024;",
                             "location = /api/v1/admin/categories",
+                            "location = /api/v1/admin/products",
                             "location = /api/v1/auth/login",
                             "location = /api/v1/auth/refresh",
                             "location = /api/v1/auth/logout",

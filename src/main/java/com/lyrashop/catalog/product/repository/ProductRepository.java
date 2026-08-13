@@ -10,5 +10,5 @@ import com.lyrashop.catalog.product.entity.Product;
 
 public interface ProductRepository extends JpaRepository<Product, UUID>, JpaSpecificationExecutor<Product> {
 
-    Optional<Product> findByIdAndActiveTrue(UUID id);
+    boolean existsBySlug(String slug);
 }
