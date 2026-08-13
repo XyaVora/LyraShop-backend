@@ -44,10 +44,6 @@ public record CreateProductRequest(
             slug = slug.toLowerCase(Locale.ROOT);
         }
         description = stripNullable(description);
-        if (basePrice != null && (basePrice.signum() < 0 || basePrice.scale() < 0 || basePrice.scale() > 2
-                || basePrice.precision() - basePrice.scale() > 10 || basePrice.precision() > 12)) {
-            throw new IllegalArgumentException("basePrice must be a non-negative amount with at most two decimals");
-        }
     }
 
     private static String stripNullable(String value) {

@@ -1145,9 +1145,10 @@ class LyraShopApplicationTests {
         mockMvc.perform(post("/api/v1/admin/products")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(productJson("Inactive Category", "inactive-category-" + suffix, null, "10.00", category.getId())))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.code").value("PRODUCT_CATEGORY_NOT_FOUND"));
+                        .content(productJson("Invalid Price", "invalid-price-" + suffix, null, "10.123", category.getId())))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.fieldErrors.basePrice").exists());
     }
 
     @Test
