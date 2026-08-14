@@ -1278,6 +1278,9 @@ class LyraShopApplicationTests {
                 .andExpect(jsonPath("$.code").value("VARIANT_VERSION_CONFLICT"));
     }
 
+    @Test
+    @Transactional
+    void persistsProductVariantsWithBinaryUuidsAndProductReferences() {
         String suffix = UUID.randomUUID().toString();
         Category category = categoryRepository.saveAndFlush(Category.create(
                 "Variant Category " + suffix, "variant-category-" + suffix, null, null
