@@ -24,6 +24,8 @@ import com.lyrashop.catalog.product.service.ProductVersionConflictException;
 
 import com.lyrashop.catalog.variant.service.VariantProductNotFoundException;
 import com.lyrashop.catalog.variant.service.VariantSkuAlreadyExistsException;
+import com.lyrashop.catalog.variant.service.VariantNotFoundException;
+import com.lyrashop.catalog.variant.service.VariantVersionConflictException;
 
 import jakarta.servlet.http.HttpServletRequest;
 
@@ -288,6 +290,10 @@ public class GlobalExceptionHandler {
     ResponseEntity<ApiErrorResponse> handleVariantProductNotFound(VariantProductNotFoundException e, HttpServletRequest r){return problem(HttpStatus.NOT_FOUND,ApiErrorResponse.of(404,"VARIANT_PRODUCT_NOT_FOUND","Variant product was not found",r.getRequestURI()));}
     @ExceptionHandler(VariantSkuAlreadyExistsException.class)
     ResponseEntity<ApiErrorResponse> handleVariantSku(VariantSkuAlreadyExistsException e,HttpServletRequest r){return problem(HttpStatus.CONFLICT,ApiErrorResponse.of(409,"VARIANT_SKU_ALREADY_EXISTS","A variant with this SKU already exists",r.getRequestURI()));}
+    @ExceptionHandler(VariantNotFoundException.class)
+    ResponseEntity<ApiErrorResponse> handleVariantNotFound(VariantNotFoundException e,HttpServletRequest r){return problem(HttpStatus.NOT_FOUND,ApiErrorResponse.of(404,"VARIANT_NOT_FOUND","Variant was not found",r.getRequestURI()));}
+    @ExceptionHandler(VariantVersionConflictException.class)
+    ResponseEntity<ApiErrorResponse> handleVariantVersionConflict(VariantVersionConflictException e,HttpServletRequest r){return problem(HttpStatus.CONFLICT,ApiErrorResponse.of(409,"VARIANT_VERSION_CONFLICT","Variant was modified by another request",r.getRequestURI()));}
 
     ResponseEntity<ApiErrorResponse> handleUnexpected(
             Exception exception,
