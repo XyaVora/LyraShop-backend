@@ -86,6 +86,13 @@ public class ProductVariant {
         return new ProductVariant(productId, sku, size, color, price, stock);
     }
 
+    public void updateCatalog(String sku, String size, String color, BigDecimal price) {
+        this.sku = normalizeSku(sku);
+        this.size = normalizeText(size, "size", 20);
+        this.color = normalizeText(color, "color", 50);
+        this.price = normalizePrice(price);
+    }
+
     public UUID getId() { return id; }
     public UUID getProductId() { return productId; }
     public String getSku() { return sku; }

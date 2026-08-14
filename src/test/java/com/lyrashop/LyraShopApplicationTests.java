@@ -1227,12 +1227,55 @@ class LyraShopApplicationTests {
                 .andExpect(jsonPath("$.sku").value("API-" + suffix.toUpperCase(Locale.ROOT)))
                 .andExpect(jsonPath("$.size").value("M"))
                 .andExpect(jsonPath("$.active").doesNotExist())
-                .andExpect(jsonPath("$.version").doesNotExist());
+                .andExpect(jsonPath("$.version").value(0));
         mockMvc.perform(post(path)
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("VARIANT_SKU_ALREADY_EXISTS"));
+    }
+
+    @Test
+    void updatesVariantCatalogWithoutChangingOwnershipStockOrState() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        Category category = categoryRepository.saveAndFlush(Category.create(
+                "Variant Update Category " + suffix, "variant-update-category-" + suffix, null, null
+        ));
+        Product product = productRepository.saveAndFlush(Product.create(
+                "Variant Update Product " + suffix, "variant-update-product-" + suffix, null,
+                new BigDecimal("50.00"), category.getId()
+        ));
+        ProductVariant variant = productVariantRepository.saveAndFlush(ProductVariant.create(
+                product.getId(), "BEFORE-" + suffix, "S", "White", new BigDecimal("51.00"), 7
+        ));
+        String path = "/api/v1/admin/products/" + product.getId() + "/variants/" + variant.getId();
+        String body = objectMapper.writeValueAsString(Map.of(
+                "sku", "after-" + suffix, "size", " M ", "color", " Black ",
+                "price", new BigDecimal("60.00"), "version", variant.getVersion()
+        ));
+        String adminToken = accessTokenForRole(UserRole.ADMIN);
+
+        mockMvc.perform(put(path).contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(put(path)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.sku").value("AFTER-" + suffix.toUpperCase(Locale.ROOT)))
+                .andExpect(jsonPath("$.stock").value(7))
+                .andExpect(jsonPath("$.version").value(1))
+                .andExpect(jsonPath("$.active").doesNotExist());
+
+        entityManager.clear();
+        ProductVariant updated = productVariantRepository.findById(variant.getId()).orElseThrow();
+        assertThat(updated.getProductId()).isEqualTo(product.getId());
+        assertThat(updated.getStock()).isEqualTo(7);
+        assertThat(updated.isActive()).isTrue();
+        mockMvc.perform(put(path)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("VARIANT_VERSION_CONFLICT"));
     }
 
     @Test

@@ -113,6 +113,8 @@ public class SecurityConfig {
                         .hasRole(UserRole.ADMIN.name())
                         .requestMatchers(HttpMethod.POST, "/api/v1/admin/products/{productId}/variants")
                         .hasRole(UserRole.ADMIN.name())
+                        .requestMatchers(HttpMethod.PUT, "/api/v1/admin/products/{productId}/variants/{variantId}")
+                        .hasRole(UserRole.ADMIN.name())
                         .anyRequest().denyAll()
                 );
 
