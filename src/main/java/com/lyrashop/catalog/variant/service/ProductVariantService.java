@@ -1,5 +1,6 @@
 package com.lyrashop.catalog.variant.service;
 
+import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -33,6 +34,9 @@ public class ProductVariantService {
   try{return variants.saveAndFlush(variant);}
   catch(DataIntegrityViolationException e){if(isSku(e))throw new VariantSkuAlreadyExistsException(e);throw e;}
   catch(ObjectOptimisticLockingFailureException e){throw new VariantVersionConflictException(e);}
+ }
+ @Transactional(readOnly = true) public List<ProductVariantResult> listActiveForProduct(UUID productId){
+  return variants.findAllByProductIdAndActiveTrueOrderBySkuAscIdAsc(productId).stream().map(ProductVariantResult::from).toList();
  }
  private static String normalizeSku(String sku){return sku.strip().toUpperCase(Locale.ROOT);}
  private static boolean isSku(Throwable e){while(e!=null){if(e.getMessage()!=null&&e.getMessage().toLowerCase(Locale.ROOT).contains("uk_product_variants_sku"))return true;e=e.getCause();}return false;}

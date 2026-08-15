@@ -14,6 +14,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.lyrashop.catalog.category.entity.Category;
@@ -22,19 +23,23 @@ import com.lyrashop.catalog.product.dto.CreateProductRequest;
 import com.lyrashop.catalog.product.dto.UpdateProductRequest;
 import com.lyrashop.catalog.product.entity.Product;
 import com.lyrashop.catalog.product.repository.ProductRepository;
+import com.lyrashop.catalog.variant.service.ProductVariantService;
 
 @Service
 public class ProductService {
 
     private final ProductRepository productRepository;
     private final CategoryRepository categoryRepository;
+    private final ProductVariantService productVariantService;
 
     public ProductService(
             ProductRepository productRepository,
-            CategoryRepository categoryRepository
+            CategoryRepository categoryRepository,
+            ProductVariantService productVariantService
     ) {
         this.productRepository = productRepository;
         this.categoryRepository = categoryRepository;
+        this.productVariantService = productVariantService;
     }
 
     @Transactional
@@ -161,6 +166,12 @@ public class ProductService {
 
     private static boolean containsSlugConstraint(String message) {
         return message != null && message.toLowerCase(Locale.ROOT).contains("uk_products_slug");
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public ProductDetailResult getActiveDetail(UUID id) {
+        ProductResult product = getActive(id);
+        return new ProductDetailResult(product, productVariantService.listActiveForProduct(id));
     }
 
     @Transactional(readOnly = true)

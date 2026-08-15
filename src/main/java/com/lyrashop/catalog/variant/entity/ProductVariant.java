@@ -93,6 +93,10 @@ public class ProductVariant {
         this.price = normalizePrice(price);
     }
 
+    public void deactivate() {
+        this.active = false;
+    }
+
     public UUID getId() { return id; }
     public UUID getProductId() { return productId; }
     public String getSku() { return sku; }
