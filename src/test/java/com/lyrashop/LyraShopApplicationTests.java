@@ -1455,6 +1455,7 @@ class LyraShopApplicationTests {
                 .andExpect(jsonPath("$.content[0].basePrice").value(49.99))
                 .andExpect(jsonPath("$.content[0].categoryId").value(category.getId()))
                 .andExpect(jsonPath("$.content[0].active").doesNotExist())
+                .andExpect(jsonPath("$.content[0].variants").doesNotExist())
                 .andExpect(jsonPath("$.totalElements").value(1));
 
         mockMvc.perform(get("/api/v1/products/{id}", visible.getId()))
@@ -1462,7 +1463,8 @@ class LyraShopApplicationTests {
                 .andExpect(jsonPath("$.id").value(visible.getId().toString()))
                 .andExpect(jsonPath("$.name").value(visible.getName()))
                 .andExpect(jsonPath("$.description").value("Public catalog item"))
-                .andExpect(jsonPath("$.active").doesNotExist());
+                .andExpect(jsonPath("$.active").doesNotExist())
+                .andExpect(jsonPath("$.variants").isEmpty());
 
         mockMvc.perform(get("/api/v1/products/{id}", hidden.getId()))
                 .andExpect(status().isNotFound())
@@ -1478,6 +1480,63 @@ class LyraShopApplicationTests {
         mockMvc.perform(get("/api/v1/products/not-a-uuid"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("PRODUCT_NOT_FOUND"));
+    }
+
+    @Test
+    void exposesOnlyActiveVariantsForTheRequestedPublicProduct() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        Category category = categoryRepository.saveAndFlush(Category.create(
+                "Public Variant Category " + suffix,
+                "public-variant-category-" + suffix,
+                null,
+                null
+        ));
+        Product product = productRepository.saveAndFlush(Product.create(
+                "Public Variant Product " + suffix,
+                "public-variant-product-" + suffix,
+                null,
+                new BigDecimal("50.00"),
+                category.getId()
+        ));
+        Product otherProduct = productRepository.saveAndFlush(Product.create(
+                "Other Variant Product " + suffix,
+                "other-variant-product-" + suffix,
+                null,
+                new BigDecimal("40.00"),
+                category.getId()
+        ));
+        ProductVariant medium = productVariantRepository.saveAndFlush(ProductVariant.create(
+                product.getId(), "PUBLIC-M-" + suffix, "M", "White", new BigDecimal("55.00"), 8
+        ));
+        ProductVariant large = productVariantRepository.saveAndFlush(ProductVariant.create(
+                product.getId(), "PUBLIC-L-" + suffix, "L", "Black", new BigDecimal("56.00"), 3
+        ));
+        ProductVariant inactive = productVariantRepository.saveAndFlush(ProductVariant.create(
+                product.getId(), "PUBLIC-S-" + suffix, "S", "Blue", new BigDecimal("54.00"), 5
+        ));
+        productVariantRepository.saveAndFlush(ProductVariant.create(
+                otherProduct.getId(), "OTHER-" + suffix, "XS", "Green", new BigDecimal("45.00"), 4
+        ));
+        inactive.deactivate();
+        productVariantRepository.saveAndFlush(inactive);
+        entityManager.clear();
+
+        mockMvc.perform(get("/api/v1/products/{id}", product.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(product.getId().toString()))
+                .andExpect(jsonPath("$.variants.length()").value(2))
+                .andExpect(jsonPath("$.variants[0].id").value(large.getId().toString()))
+                .andExpect(jsonPath("$.variants[0].sku").value(large.getSku()))
+                .andExpect(jsonPath("$.variants[0].size").value(large.getSize()))
+                .andExpect(jsonPath("$.variants[0].color").value(large.getColor()))
+                .andExpect(jsonPath("$.variants[0].price").value(large.getPrice().doubleValue()))
+                .andExpect(jsonPath("$.variants[0].stock").value(large.getStock()))
+                .andExpect(jsonPath("$.variants[1].id").value(medium.getId().toString()))
+                .andExpect(jsonPath("$.variants[0].productId").doesNotExist())
+                .andExpect(jsonPath("$.variants[0].active").doesNotExist())
+                .andExpect(jsonPath("$.variants[0].version").doesNotExist())
+                .andExpect(jsonPath("$.variants[0].createdAt").doesNotExist())
+                .andExpect(jsonPath("$.variants[0].updatedAt").doesNotExist());
     }
 
     @Test
