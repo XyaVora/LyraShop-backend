@@ -1,5 +1,6 @@
 package com.lyrashop.catalog.variant.repository;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -14,6 +15,8 @@ public interface ProductVariantRepository extends JpaRepository<ProductVariant, 
     boolean existsBySku(String sku);
 
     Optional<ProductVariant> findByIdAndProductId(UUID id, UUID productId);
+
+    List<PublicProductVariantProjection> findAllByProductIdAndActiveTrueOrderBySkuAscIdAsc(UUID productId);
 
     boolean existsBySkuAndIdNot(String sku, UUID id);
 }

@@ -9,8 +9,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.lyrashop.catalog.product.dto.ProductDetailResponse;
 import com.lyrashop.catalog.product.dto.ProductPageResponse;
-import com.lyrashop.catalog.product.dto.ProductResponse;
 import com.lyrashop.catalog.product.service.ProductNotFoundException;
 import com.lyrashop.catalog.product.service.ProductQuery;
 import com.lyrashop.catalog.product.service.ProductService;
@@ -42,11 +42,13 @@ public class ProductController {
     }
 
     @GetMapping(path = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ProductResponse get(@PathVariable String id) {
+    public ProductDetailResponse get(@PathVariable String id) {
+        UUID productId;
         try {
-            return ProductResponse.from(productService.getActive(UUID.fromString(id)));
+            productId = UUID.fromString(id);
         } catch (IllegalArgumentException exception) {
             throw new ProductNotFoundException();
         }
+        return ProductDetailResponse.from(productService.getActiveDetail(productId));
     }
 }
