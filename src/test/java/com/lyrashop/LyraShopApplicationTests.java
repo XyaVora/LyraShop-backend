@@ -1279,6 +1279,163 @@ class LyraShopApplicationTests {
     }
 
     @Test
+    void deactivatesVariantsForAdminsAndKeepsTheOperationIdempotent() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        Category category = categoryRepository.saveAndFlush(Category.create(
+                "Variant Deactivate Category " + suffix,
+                "variant-deactivate-category-" + suffix,
+                null,
+                null
+        ));
+        Product product = productRepository.saveAndFlush(Product.create(
+                "Variant Deactivate Product " + suffix,
+                "variant-deactivate-product-" + suffix,
+                null,
+                new BigDecimal("50.00"),
+                category.getId()
+        ));
+        ProductVariant variant = productVariantRepository.saveAndFlush(ProductVariant.create(
+                product.getId(), "DEACTIVATE-" + suffix, "M", "Black", new BigDecimal("55.00"), 4
+        ));
+        String path = "/api/v1/admin/products/" + product.getId()
+                + "/variants/" + variant.getId() + "/deactivate";
+
+        mockMvc.perform(patch(path))
+                .andExpect(status().isUnauthorized());
+        String adminToken = accessTokenForRole(UserRole.ADMIN);
+        mockMvc.perform(patch(path)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessTokenForRole(UserRole.CUSTOMER)))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(patch(path)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isNoContent())
+                .andExpect(content().string(emptyString()));
+
+        entityManager.clear();
+        ProductVariant deactivated = productVariantRepository.findById(variant.getId()).orElseThrow();
+        Instant deactivatedAt = deactivated.getUpdatedAt();
+        assertThat(deactivated.isActive()).isFalse();
+        assertThat(deactivated.getVersion()).isEqualTo(1L);
+        mockMvc.perform(get("/api/v1/products/{id}", product.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.variants").isEmpty());
+
+        mockMvc.perform(patch(path)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isNoContent());
+        entityManager.clear();
+        ProductVariant stillDeactivated = productVariantRepository.findById(variant.getId()).orElseThrow();
+        assertThat(stillDeactivated.isActive()).isFalse();
+        assertThat(stillDeactivated.getVersion()).isEqualTo(1L);
+        assertThat(stillDeactivated.getUpdatedAt()).isEqualTo(deactivatedAt);
+    }
+
+    @Test
+    void protectsVariantDeactivationOwnershipAndIdMapping() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        Category category = categoryRepository.saveAndFlush(Category.create(
+                "Variant Deactivate Mapping Category " + suffix,
+                "variant-deactivate-mapping-category-" + suffix,
+                null,
+                null
+        ));
+        Product product = productRepository.saveAndFlush(Product.create(
+                "Variant Deactivate Mapping Product " + suffix,
+                "variant-deactivate-mapping-product-" + suffix,
+                null,
+                new BigDecimal("50.00"),
+                category.getId()
+        ));
+        Product otherProduct = productRepository.saveAndFlush(Product.create(
+                "Other Variant Deactivate Product " + suffix,
+                "other-variant-deactivate-product-" + suffix,
+                null,
+                new BigDecimal("45.00"),
+                category.getId()
+        ));
+        ProductVariant variant = productVariantRepository.saveAndFlush(ProductVariant.create(
+                product.getId(), "MAPPING-" + suffix, "M", "Black", new BigDecimal("55.00"), 4
+        ));
+        String adminToken = accessTokenForRole(UserRole.ADMIN);
+        String basePath = "/api/v1/admin/products/" + product.getId()
+                + "/variants/" + variant.getId() + "/deactivate";
+
+        mockMvc.perform(patch("/api/v1/admin/products/{productId}/variants/{variantId}/deactivate",
+                        otherProduct.getId(), variant.getId())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("VARIANT_NOT_FOUND"));
+        mockMvc.perform(patch("/api/v1/admin/products/not-a-uuid/variants/{variantId}/deactivate", variant.getId())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("VARIANT_PRODUCT_NOT_FOUND"));
+        mockMvc.perform(patch("/api/v1/admin/products/{productId}/variants/not-a-uuid/deactivate", product.getId())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("VARIANT_NOT_FOUND"));
+        mockMvc.perform(patch("/api/v1/admin/products/00000000-0000-0000-0000-000000000000/variants/{variantId}/deactivate", variant.getId())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("VARIANT_PRODUCT_NOT_FOUND"));
+        product.deactivate();
+        productRepository.saveAndFlush(product);
+        mockMvc.perform(patch(basePath)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    void concurrentlyDeactivatesVariantOnlyOnce() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        Category category = categoryRepository.saveAndFlush(Category.create(
+                "Concurrent Variant Deactivate Category " + suffix,
+                "concurrent-variant-deactivate-category-" + suffix,
+                null,
+                null
+        ));
+        Product product = productRepository.saveAndFlush(Product.create(
+                "Concurrent Variant Deactivate Product " + suffix,
+                "concurrent-variant-deactivate-product-" + suffix,
+                null,
+                new BigDecimal("50.00"),
+                category.getId()
+        ));
+        ProductVariant variant = productVariantRepository.saveAndFlush(ProductVariant.create(
+                product.getId(), "CONCURRENT-DEACTIVATE-" + suffix, "M", "Black", new BigDecimal("55.00"), 4
+        ));
+        String path = "/api/v1/admin/products/" + product.getId()
+                + "/variants/" + variant.getId() + "/deactivate";
+        String adminToken = accessTokenForRole(UserRole.ADMIN);
+        CyclicBarrier barrier = new CyclicBarrier(2);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+
+        try {
+            Future<Integer> first = executor.submit(() -> patchAfterBarrier(path, adminToken, barrier));
+            Future<Integer> second = executor.submit(() -> patchAfterBarrier(path, adminToken, barrier));
+            assertThat(List.of(
+                    first.get(30, TimeUnit.SECONDS),
+                    second.get(30, TimeUnit.SECONDS)
+            )).containsExactly(204, 204);
+        } finally {
+            executor.shutdownNow();
+        }
+
+        entityManager.clear();
+        ProductVariant deactivated = productVariantRepository.findById(variant.getId()).orElseThrow();
+        assertThat(deactivated.isActive()).isFalse();
+        assertThat(deactivated.getVersion()).isEqualTo(1L);
+    }
+
+    private int patchAfterBarrier(String path, String adminToken, CyclicBarrier barrier) throws Exception {
+        barrier.await(30, TimeUnit.SECONDS);
+        return mockMvc.perform(patch(path)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andReturn()
+                .getResponse()
+                .getStatus();
+    }
+
+    @Test
     @Transactional
     void persistsProductVariantsWithBinaryUuidsAndProductReferences() {
         String suffix = UUID.randomUUID().toString();
