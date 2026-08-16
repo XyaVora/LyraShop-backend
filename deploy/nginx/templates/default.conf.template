@@ -56,6 +56,8 @@ map $uri $reject_ambiguous_auth_path {
     ~^/api/v1/admin/categories/ 1;
     ~^/api/v1/admin/categories\; 1;
     ~^/api/v1/admin/products/[^/]+/deactivate/ 1;
+    ~^/api/v1/admin/products/[^/]+/variants/[^/]+/deactivate/ 1;
+    ~^/api/v1/admin/products/[^/]+/variants/[^/]+/deactivate\; 1;
     ~^/api/v1/admin/products/[^/]+/variants/[^/]+/$ 1;
     ~^/api/v1/admin/products/[^/]+/variants/[^/]+\; 1;
     ~^/api/v1/admin/products/[^/]+/deactivate\; 1;
@@ -278,6 +280,12 @@ server {
     }
 
     location ~ ^/api/v1/admin/products/[0-9a-fA-F-]+/variants$ {
+        client_max_body_size ${BUSINESS_MAX_REQUEST_BODY_BYTES};
+        proxy_request_buffering on;
+        proxy_pass http://lyrashop_backend;
+    }
+
+    location ~ ^/api/v1/admin/products/[0-9a-fA-F-]+/variants/[0-9a-fA-F-]+/deactivate$ {
         client_max_body_size ${BUSINESS_MAX_REQUEST_BODY_BYTES};
         proxy_request_buffering on;
         proxy_pass http://lyrashop_backend;

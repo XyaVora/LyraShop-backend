@@ -27,4 +27,15 @@ public class AdminProductVariantController {
   try{return ResponseEntity.ok(ProductVariantResponse.from(service.update(UUID.fromString(productId),UUID.fromString(variantId),request)));}
   catch(IllegalArgumentException e){throw new VariantNotFoundException();}
  }
+
+ @PreAuthorize("hasRole('ADMIN')")
+ @PatchMapping(path="/{variantId}/deactivate")
+ public ResponseEntity<Void> deactivate(@PathVariable String productId,@PathVariable String variantId){
+  UUID productUuid;
+  try{productUuid=UUID.fromString(productId);}catch(IllegalArgumentException e){throw new VariantProductNotFoundException();}
+  UUID variantUuid;
+  try{variantUuid=UUID.fromString(variantId);}catch(IllegalArgumentException e){throw new VariantNotFoundException();}
+  service.deactivate(productUuid,variantUuid);
+  return ResponseEntity.noContent().build();
+ }
 }

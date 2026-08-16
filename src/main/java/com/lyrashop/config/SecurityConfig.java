@@ -115,6 +115,8 @@ public class SecurityConfig {
                         .hasRole(UserRole.ADMIN.name())
                         .requestMatchers(HttpMethod.PUT, "/api/v1/admin/products/{productId}/variants/{variantId}")
                         .hasRole(UserRole.ADMIN.name())
+                        .requestMatchers(HttpMethod.PATCH, "/api/v1/admin/products/{productId}/variants/{variantId}/deactivate")
+                        .hasRole(UserRole.ADMIN.name())
                         .anyRequest().denyAll()
                 );
 

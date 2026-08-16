@@ -35,6 +35,13 @@ public class ProductVariantService {
   catch(DataIntegrityViolationException e){if(isSku(e))throw new VariantSkuAlreadyExistsException(e);throw e;}
   catch(ObjectOptimisticLockingFailureException e){throw new VariantVersionConflictException(e);}
  }
+ @Transactional public void deactivate(UUID productId, UUID variantId){
+  if(!products.existsById(productId)) throw new VariantProductNotFoundException();
+  ProductVariant variant=variants.findForDeactivation(productId,variantId).orElseThrow(VariantNotFoundException::new);
+  if(!variant.isActive()) return;
+  variant.deactivate();
+  variants.saveAndFlush(variant);
+ }
  @Transactional(readOnly = true) public List<ProductVariantResult> listActiveForProduct(UUID productId){
   return variants.findAllByProductIdAndActiveTrueOrderBySkuAscIdAsc(productId).stream().map(ProductVariantResult::from).toList();
  }
