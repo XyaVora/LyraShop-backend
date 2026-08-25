@@ -82,4 +82,15 @@ public class AdminProductController {
         }
         return ResponseEntity.noContent().build();
     }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @PatchMapping(path = "/{id}/activate")
+    public ResponseEntity<Void> activate(@PathVariable String id) {
+        try {
+            productService.activate(UUID.fromString(id));
+        } catch (IllegalArgumentException exception) {
+            throw new ProductNotFoundException();
+        }
+        return ResponseEntity.noContent().build();
+    }
 }

@@ -120,6 +120,8 @@ public class SecurityConfig {
                         .hasRole(UserRole.ADMIN.name())
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/admin/products/{id}/deactivate")
                         .hasRole(UserRole.ADMIN.name())
+                        .requestMatchers(HttpMethod.PATCH, "/api/v1/admin/products/{id}/activate")
+                        .hasRole(UserRole.ADMIN.name())
                         .requestMatchers(HttpMethod.POST, "/api/v1/admin/products/{productId}/variants")
                         .hasRole(UserRole.ADMIN.name())
                         .requestMatchers(HttpMethod.PUT, "/api/v1/admin/products/{productId}/variants/{variantId}")

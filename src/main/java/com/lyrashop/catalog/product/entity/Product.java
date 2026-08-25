@@ -102,6 +102,10 @@ public class Product {
         this.active = false;
     }
 
+    public void activate() {
+        this.active = true;
+    }
+
     public void update(
             String name,
             String slug,

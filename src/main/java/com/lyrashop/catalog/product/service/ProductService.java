@@ -119,6 +119,14 @@ public class ProductService {
         productRepository.saveAndFlush(product);
     }
 
+    @Transactional
+    public void activate(UUID id) {
+        Product product = productRepository.findById(id)
+                .orElseThrow(ProductNotFoundException::new);
+        product.activate();
+        productRepository.saveAndFlush(product);
+    }
+
     @Transactional(readOnly = true)
     public List<AdminProductResponse> listForAdmin() {
         return productRepository.findAllByOrderByCreatedAtDescIdDesc().stream()
