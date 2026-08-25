@@ -23,6 +23,10 @@ import com.lyrashop.catalog.product.service.ProductSlugAlreadyExistsException;
 import com.lyrashop.catalog.product.service.InvalidProductImageUrlException;
 import com.lyrashop.catalog.product.service.ProductVersionConflictException;
 
+import com.lyrashop.review.service.ReviewAlreadyExistsException;
+import com.lyrashop.review.service.ReviewNotAllowedException;
+import com.lyrashop.review.service.ReviewNotFoundException;
+import com.lyrashop.user.service.UserNotFoundException;
 import com.lyrashop.order.service.EmptyCartException;
 import com.lyrashop.order.service.InvalidOrderStatusException;
 import com.lyrashop.order.service.InvalidPaymentMethodException;
@@ -307,6 +311,46 @@ public class GlobalExceptionHandler {
                         "Refresh token is invalid",
                         request.getRequestURI()
                 ));
+    }
+
+    @ExceptionHandler(ReviewNotAllowedException.class)
+    ResponseEntity<ApiErrorResponse> handleReviewNotAllowed(
+            ReviewNotAllowedException exception,
+            HttpServletRequest request
+    ) {
+        return problem(HttpStatus.FORBIDDEN, ApiErrorResponse.of(
+                HttpStatus.FORBIDDEN.value(), "REVIEW_NOT_ALLOWED",
+                "Review is only allowed after a delivered purchase", request.getRequestURI()));
+    }
+
+    @ExceptionHandler(ReviewAlreadyExistsException.class)
+    ResponseEntity<ApiErrorResponse> handleReviewExists(
+            ReviewAlreadyExistsException exception,
+            HttpServletRequest request
+    ) {
+        return problem(HttpStatus.CONFLICT, ApiErrorResponse.of(
+                HttpStatus.CONFLICT.value(), "REVIEW_ALREADY_EXISTS",
+                "A review for this product already exists", request.getRequestURI()));
+    }
+
+    @ExceptionHandler(ReviewNotFoundException.class)
+    ResponseEntity<ApiErrorResponse> handleReviewNotFound(
+            ReviewNotFoundException exception,
+            HttpServletRequest request
+    ) {
+        return problem(HttpStatus.NOT_FOUND, ApiErrorResponse.of(
+                HttpStatus.NOT_FOUND.value(), "REVIEW_NOT_FOUND", "Review was not found",
+                request.getRequestURI()));
+    }
+
+    @ExceptionHandler(UserNotFoundException.class)
+    ResponseEntity<ApiErrorResponse> handleUserNotFound(
+            UserNotFoundException exception,
+            HttpServletRequest request
+    ) {
+        return problem(HttpStatus.NOT_FOUND, ApiErrorResponse.of(
+                HttpStatus.NOT_FOUND.value(), "USER_NOT_FOUND", "User was not found",
+                request.getRequestURI()));
     }
 
     @ExceptionHandler(EmptyCartException.class)
