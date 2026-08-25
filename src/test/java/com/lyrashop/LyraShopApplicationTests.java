@@ -1856,6 +1856,61 @@ class LyraShopApplicationTests {
     }
 
     @Test
+    void activatesDeactivatedProductsForAdminsAndShowsThemPublicly() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        Category category = categoryRepository.saveAndFlush(Category.create(
+                "Activate Product Category " + suffix,
+                "activate-product-category-" + suffix,
+                null,
+                null
+        ));
+        Product product = productRepository.saveAndFlush(Product.create(
+                "Activate Product " + suffix,
+                "activate-product-" + suffix,
+                "To be restored",
+                new BigDecimal("20.00"),
+                category.getId()
+        ));
+        product.deactivate();
+        productRepository.saveAndFlush(product);
+        String path = "/api/v1/admin/products/" + product.getId() + "/activate";
+
+        mockMvc.perform(get("/api/v1/products/" + product.getId()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("PRODUCT_NOT_FOUND"));
+        mockMvc.perform(patch(path))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+        mockMvc.perform(patch(path)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessTokenForRole(UserRole.CUSTOMER)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+
+        String adminToken = accessTokenForRole(UserRole.ADMIN);
+        mockMvc.perform(patch(path)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isNoContent())
+                .andExpect(content().string(emptyString()));
+        entityManager.clear();
+        assertThat(productRepository.findById(product.getId()).orElseThrow().isActive()).isTrue();
+        mockMvc.perform(get("/api/v1/products/" + product.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(product.getId().toString()))
+                .andExpect(jsonPath("$.name").value("Activate Product " + suffix));
+        mockMvc.perform(patch(path)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isNoContent());
+        mockMvc.perform(patch("/api/v1/admin/products/not-a-uuid/activate")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("PRODUCT_NOT_FOUND"));
+        mockMvc.perform(patch("/api/v1/admin/products/00000000-0000-0000-0000-000000000000/activate")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("PRODUCT_NOT_FOUND"));
+    }
+
+    @Test
     void listsActiveAndInactiveProductsForAdminsOnly() throws Exception {
         String suffix = UUID.randomUUID().toString();
         Category category = categoryRepository.saveAndFlush(Category.create(
