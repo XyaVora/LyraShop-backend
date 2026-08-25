@@ -38,4 +38,14 @@ public class AdminProductVariantController {
   service.deactivate(productUuid,variantUuid);
   return ResponseEntity.noContent().build();
  }
+
+ @PreAuthorize("hasRole('ADMIN')")
+ @PatchMapping(path="/{variantId}/inventory",consumes=MediaType.APPLICATION_JSON_VALUE,produces=MediaType.APPLICATION_JSON_VALUE)
+ public ProductVariantInventoryResponse adjustInventory(@PathVariable String productId,@PathVariable String variantId,@Valid @RequestBody AdjustProductVariantInventoryRequest request){
+  UUID productUuid;
+  try{productUuid=UUID.fromString(productId);}catch(IllegalArgumentException e){throw new VariantProductNotFoundException();}
+  UUID variantUuid;
+  try{variantUuid=UUID.fromString(variantId);}catch(IllegalArgumentException e){throw new VariantNotFoundException();}
+  return ProductVariantInventoryResponse.from(service.adjustInventory(productUuid,variantUuid,request));
+ }
 }

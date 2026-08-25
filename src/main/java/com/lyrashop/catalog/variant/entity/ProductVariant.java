@@ -93,6 +93,11 @@ public class ProductVariant {
         this.price = normalizePrice(price);
     }
 
+    public void adjustInventory(int stock) {
+        if (stock < 0) throw new IllegalArgumentException("stock must be non-negative");
+        this.stock = stock;
+    }
+
     public void deactivate() {
         this.active = false;
     }
