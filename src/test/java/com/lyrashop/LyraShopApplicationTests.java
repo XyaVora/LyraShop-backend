@@ -1927,6 +1927,33 @@ class LyraShopApplicationTests {
     }
 
     @Test
+    void rejectsReviewUntilTheCustomerHasADeliveredOrder() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        Category category = categoryRepository.saveAndFlush(Category.create(
+                "Review Category " + suffix, "review-category-" + suffix, null, null
+        ));
+        Product product = productRepository.saveAndFlush(Product.create(
+                "Review Product " + suffix, "review-product-" + suffix, null,
+                new BigDecimal("50.00"), category.getId()
+        ));
+        String customerToken = accessTokenForRole(UserRole.CUSTOMER);
+        mockMvc.perform(post("/api/v1/products/{id}/reviews", product.getId())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + customerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"rating\":5,\"comment\":\"Nice\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("REVIEW_NOT_ALLOWED"));
+        mockMvc.perform(get("/api/v1/products/{id}/reviews", product.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isEmpty());
+        mockMvc.perform(get("/api/v1/admin/users")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessTokenForRole(UserRole.ADMIN)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].email").exists())
+                .andExpect(jsonPath("$[0].passwordHash").doesNotExist());
+    }
+
+    @Test
     void createsCodOrderFromCartDecrementsStockAndRestoresItOnCancel() throws Exception {
         String suffix = UUID.randomUUID().toString();
         Category category = categoryRepository.saveAndFlush(Category.create(
@@ -2254,8 +2281,8 @@ class LyraShopApplicationTests {
         assertThat(MYSQL.isRunning()).isTrue();
         assertThat(jdbcTemplate.queryForObject("SELECT 1", Integer.class)).isEqualTo(1);
         assertThat(currentMigration).isNotNull();
-        assertThat(currentMigration.getVersion()).isEqualTo(MigrationVersion.fromVersion("7"));
-        assertThat(currentMigration.getDescription()).isEqualTo("create orders");
+        assertThat(currentMigration.getVersion()).isEqualTo(MigrationVersion.fromVersion("8"));
+        assertThat(currentMigration.getDescription()).isEqualTo("create reviews");
         assertThat(currentMigration.getState()).isEqualTo(MigrationState.SUCCESS);
         assertThat(flyway.validateWithResult().validationSuccessful).isTrue();
         assertThat(flyway.migrate().migrationsExecuted).isZero();
@@ -2280,12 +2307,13 @@ class LyraShopApplicationTests {
                       'cart_items',
                       'orders',
                       'order_items',
+                      'reviews',
                       'flyway_schema_history'
                   )
                 """,
                 Integer.class
         );
-        assertThat(expectedTables).isEqualTo(11);
+        assertThat(expectedTables).isEqualTo(12);
     }
 
     @Test
