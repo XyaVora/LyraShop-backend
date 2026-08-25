@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.hamcrest.Matchers.containsStringIgnoringCase;
 import static org.hamcrest.Matchers.emptyString;
 import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -79,6 +80,8 @@ import com.lyrashop.catalog.product.entity.Product;
 import com.lyrashop.catalog.product.repository.ProductRepository;
 import com.lyrashop.catalog.variant.entity.ProductVariant;
 import com.lyrashop.catalog.variant.repository.ProductVariantRepository;
+import com.lyrashop.review.entity.Review;
+import com.lyrashop.review.repository.ReviewRepository;
 import com.lyrashop.config.SecurityConfig;
 import com.lyrashop.exception.InvalidRefreshTokenException;
 import com.lyrashop.security.AccessTokenClaimsValidator;
@@ -149,6 +152,9 @@ class LyraShopApplicationTests {
 
     @Autowired
     private ProductVariantRepository productVariantRepository;
+
+    @Autowired
+    private ReviewRepository reviewRepository;
 
     @Autowired
     private PlatformTransactionManager transactionManager;
@@ -2108,6 +2114,46 @@ class LyraShopApplicationTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].email").exists())
                 .andExpect(jsonPath("$[0].passwordHash").doesNotExist());
+    }
+
+    @Test
+    void exposesAverageRatingAndReviewCountOnPublicProductCatalog() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        Category category = categoryRepository.saveAndFlush(Category.create(
+                "Rated Category " + suffix, "rated-category-" + suffix, null, null
+        ));
+        Product product = productRepository.saveAndFlush(Product.create(
+                "Rated Product " + suffix, "rated-product-" + suffix, null,
+                new BigDecimal("50.00"), category.getId()
+        ));
+        User first = userRepository.saveAndFlush(User.createCustomer(
+                "rated-a-" + suffix + "@example.com", PASSWORD_HASH, "Rated A", null
+        ));
+        User second = userRepository.saveAndFlush(User.createCustomer(
+                "rated-b-" + suffix + "@example.com", PASSWORD_HASH, "Rated B", null
+        ));
+        reviewRepository.saveAndFlush(Review.create(product.getId(), first.getId(), 5, "Great"));
+        reviewRepository.saveAndFlush(Review.create(product.getId(), second.getId(), 3, "Ok"));
+
+        mockMvc.perform(get("/api/v1/products/{id}", product.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.averageRating").value(4.00))
+                .andExpect(jsonPath("$.reviewCount").value(2));
+        mockMvc.perform(get("/api/v1/products").param("keyword", suffix))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].id").value(product.getId().toString()))
+                .andExpect(jsonPath("$.content[0].averageRating").value(4.00))
+                .andExpect(jsonPath("$.content[0].reviewCount").value(2));
+        mockMvc.perform(get("/api/v1/products/{id}", UUID.randomUUID()))
+                .andExpect(status().isNotFound());
+        Product unreviewed = productRepository.saveAndFlush(Product.create(
+                "Unreviewed Product " + suffix, "unreviewed-product-" + suffix, null,
+                new BigDecimal("40.00"), category.getId()
+        ));
+        mockMvc.perform(get("/api/v1/products/{id}", unreviewed.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.averageRating").value(nullValue()))
+                .andExpect(jsonPath("$.reviewCount").value(0));
     }
 
     @Test
