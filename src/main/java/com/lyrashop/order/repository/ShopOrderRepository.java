@@ -28,4 +28,17 @@ public interface ShopOrderRepository extends JpaRepository<ShopOrder, UUID> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select shopOrder from ShopOrder shopOrder where shopOrder.id = :id and shopOrder.userId = :userId")
     Optional<ShopOrder> findForUpdateByUser(@Param("id") UUID id, @Param("userId") UUID userId);
+
+    @Query("""
+            select count(item) > 0
+            from ShopOrder shopOrder
+            join shopOrder.items item
+            where shopOrder.userId = :userId
+              and shopOrder.status = com.lyrashop.order.entity.OrderStatus.DELIVERED
+              and item.variantId in (
+                  select variant.id from ProductVariant variant where variant.productId = :productId
+              )
+            """)
+    boolean hasDeliveredProduct(@Param("userId") UUID userId, @Param("productId") UUID productId);
 }
+
