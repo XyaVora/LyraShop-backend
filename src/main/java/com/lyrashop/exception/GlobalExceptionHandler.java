@@ -23,6 +23,8 @@ import com.lyrashop.catalog.product.service.ProductSlugAlreadyExistsException;
 import com.lyrashop.catalog.product.service.InvalidProductImageUrlException;
 import com.lyrashop.catalog.product.service.ProductVersionConflictException;
 
+import com.lyrashop.cart.service.CartItemNotFoundException;
+import com.lyrashop.cart.service.InsufficientStockException;
 import com.lyrashop.catalog.variant.service.VariantProductNotFoundException;
 import com.lyrashop.catalog.variant.service.VariantSkuAlreadyExistsException;
 import com.lyrashop.catalog.variant.service.VariantNotFoundException;
@@ -301,6 +303,38 @@ public class GlobalExceptionHandler {
                         "Refresh token is invalid",
                         request.getRequestURI()
                 ));
+    }
+
+    @ExceptionHandler(InsufficientStockException.class)
+    ResponseEntity<ApiErrorResponse> handleInsufficientStock(
+            InsufficientStockException exception,
+            HttpServletRequest request
+    ) {
+        return problem(
+                HttpStatus.CONFLICT,
+                ApiErrorResponse.of(
+                        HttpStatus.CONFLICT.value(),
+                        "INSUFFICIENT_STOCK",
+                        "Requested quantity exceeds available stock",
+                        request.getRequestURI()
+                )
+        );
+    }
+
+    @ExceptionHandler(CartItemNotFoundException.class)
+    ResponseEntity<ApiErrorResponse> handleCartItemNotFound(
+            CartItemNotFoundException exception,
+            HttpServletRequest request
+    ) {
+        return problem(
+                HttpStatus.NOT_FOUND,
+                ApiErrorResponse.of(
+                        HttpStatus.NOT_FOUND.value(),
+                        "CART_ITEM_NOT_FOUND",
+                        "Cart item was not found",
+                        request.getRequestURI()
+                )
+        );
     }
 
     @ExceptionHandler(VariantProductNotFoundException.class)
