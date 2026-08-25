@@ -61,6 +61,7 @@ class NginxRegistrationIngressTests {
     private static final String LOGOUT_PATH = "/api/v1/auth/logout";
     private static final String ADMIN_PRODUCT_PATH = "/api/v1/admin/products";
     private static final String ADMIN_VARIANT_DEACTIVATE_PATH = "/api/v1/admin/products/00000000-0000-0000-0000-000000000000/variants/11111111-1111-1111-1111-111111111111/deactivate";
+    private static final String ADMIN_PRODUCT_ACTIVATE_PATH = "/api/v1/admin/products/00000000-0000-0000-0000-000000000000/activate";
     private static final String ADMIN_VARIANT_INVENTORY_PATH = "/api/v1/admin/products/00000000-0000-0000-0000-000000000000/variants/11111111-1111-1111-1111-111111111111/inventory";
     private static final String ADMIN_PRODUCT_IMAGE_PATH = "/api/v1/admin/products/00000000-0000-0000-0000-000000000000/images";
     private static final String ADMIN_CATEGORY_UPDATE_PATH = "/api/v1/admin/categories/12";
@@ -129,6 +130,40 @@ class NginxRegistrationIngressTests {
             assertThat(trailingSlash.headers().firstValue("X-Upstream-Id")).isEmpty();
             assertThat(matrixParameter.headers().firstValue("X-Upstream-Id")).isEmpty();
             assertThat(encodedMatrixParameter.headers().firstValue("X-Upstream-Id")).isEmpty();
+        }
+    }
+
+    @Test
+    void proxiesAndRejectsProductActivationPathVariants() throws Exception {
+        try (Gateway gateway = startGateway(Policy.highCapacity())) {
+            HttpResponse<String> valid = send(
+                    gateway,
+                    "PATCH",
+                    ADMIN_PRODUCT_ACTIVATE_PATH,
+                    HttpRequest.BodyPublishers.noBody(),
+                    Map.of()
+            );
+            HttpResponse<String> trailingSlash = send(
+                    gateway,
+                    "PATCH",
+                    ADMIN_PRODUCT_ACTIVATE_PATH + "/",
+                    HttpRequest.BodyPublishers.noBody(),
+                    Map.of()
+            );
+            HttpResponse<String> matrixParameter = send(
+                    gateway,
+                    "PATCH",
+                    ADMIN_PRODUCT_ACTIVATE_PATH + ";scope=other",
+                    HttpRequest.BodyPublishers.noBody(),
+                    Map.of()
+            );
+
+            assertThat(valid.statusCode()).isEqualTo(200);
+            assertThat(header(valid, "X-Upstream-Id")).isIn("a", "b");
+            assertThat(trailingSlash.statusCode()).isEqualTo(404);
+            assertThat(matrixParameter.statusCode()).isEqualTo(404);
+            assertThat(trailingSlash.headers().firstValue("X-Upstream-Id")).isEmpty();
+            assertThat(matrixParameter.headers().firstValue("X-Upstream-Id")).isEmpty();
         }
     }
 
@@ -396,6 +431,7 @@ class NginxRegistrationIngressTests {
                             "location = /api/v1/admin/products",
                             "location ~ ^/api/v1/admin/products/[0-9a-fA-F-]+$",
                             "location ~ ^/api/v1/admin/products/[0-9a-fA-F-]+/deactivate$",
+                            "location ~ ^/api/v1/admin/products/[0-9a-fA-F-]+/activate$",
                             "location ~ ^/api/v1/admin/products/[0-9a-fA-F-]+/variants/[0-9a-fA-F-]+/deactivate$",
                             "location ~ ^/api/v1/admin/products/[0-9a-fA-F-]+/variants/[0-9a-fA-F-]+/inventory$",
                             "location ~ ^/api/v1/admin/products/[0-9a-fA-F-]+/images$",
