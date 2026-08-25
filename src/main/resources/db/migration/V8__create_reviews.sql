@@ -2,7 +2,7 @@ CREATE TABLE reviews (
     id BIGINT NOT NULL AUTO_INCREMENT,
     product_id BINARY(16) NOT NULL,
     user_id BINARY(16) NOT NULL,
-    rating TINYINT NOT NULL,
+    rating INT NOT NULL,
     comment TEXT NULL,
     created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     CONSTRAINT pk_reviews PRIMARY KEY (id),
