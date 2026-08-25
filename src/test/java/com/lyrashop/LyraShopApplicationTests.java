@@ -6,6 +6,7 @@ import static org.hamcrest.Matchers.containsStringIgnoringCase;
 import static org.hamcrest.Matchers.emptyString;
 import static org.hamcrest.Matchers.not;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -1926,6 +1927,59 @@ class LyraShopApplicationTests {
     }
 
     @Test
+    void managesCustomerCartQuantityAgainstVariantStock() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        Category category = categoryRepository.saveAndFlush(Category.create(
+                "Cart Category " + suffix, "cart-category-" + suffix, null, null
+        ));
+        Product product = productRepository.saveAndFlush(Product.create(
+                "Cart Product " + suffix, "cart-product-" + suffix, null,
+                new BigDecimal("50.00"), category.getId()
+        ));
+        ProductVariant variant = productVariantRepository.saveAndFlush(ProductVariant.create(
+                product.getId(), "CART-" + suffix, "M", "Black", new BigDecimal("55.00"), 4
+        ));
+        String customerToken = accessTokenForRole(UserRole.CUSTOMER);
+        String addBody = objectMapper.writeValueAsString(Map.of(
+                "variantId", variant.getId(),
+                "quantity", 2
+        ));
+
+        mockMvc.perform(get("/api/v1/cart"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(post("/api/v1/cart/items")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + customerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(addBody))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.items[0].quantity").value(2))
+                .andExpect(jsonPath("$.items[0].sku").value(variant.getSku()))
+                .andExpect(jsonPath("$.totalAmount").value(110.00));
+        mockMvc.perform(post("/api/v1/cart/items")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + customerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "variantId", variant.getId(),
+                                "quantity", 3
+                        ))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("INSUFFICIENT_STOCK"));
+        mockMvc.perform(get("/api/v1/cart")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + customerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].quantity").value(2));
+        mockMvc.perform(delete("/api/v1/cart")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + customerToken))
+                .andExpect(status().isNoContent());
+        mockMvc.perform(get("/api/v1/cart")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + customerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items").isEmpty())
+                .andExpect(jsonPath("$.totalAmount").value(0));
+    }
+
+    @Test
     void hidesProductsWhenTheirCategoryIsInactive() throws Exception {
         String suffix = UUID.randomUUID().toString();
         Category category = categoryRepository.saveAndFlush(Category.create(
@@ -2149,8 +2203,8 @@ class LyraShopApplicationTests {
         assertThat(MYSQL.isRunning()).isTrue();
         assertThat(jdbcTemplate.queryForObject("SELECT 1", Integer.class)).isEqualTo(1);
         assertThat(currentMigration).isNotNull();
-        assertThat(currentMigration.getVersion()).isEqualTo(MigrationVersion.fromVersion("5"));
-        assertThat(currentMigration.getDescription()).isEqualTo("create product images");
+        assertThat(currentMigration.getVersion()).isEqualTo(MigrationVersion.fromVersion("6"));
+        assertThat(currentMigration.getDescription()).isEqualTo("create carts");
         assertThat(currentMigration.getState()).isEqualTo(MigrationState.SUCCESS);
         assertThat(flyway.validateWithResult().validationSuccessful).isTrue();
         assertThat(flyway.migrate().migrationsExecuted).isZero();
@@ -2171,12 +2225,14 @@ class LyraShopApplicationTests {
                       'products',
                       'product_variants',
                       'product_images',
+                      'carts',
+                      'cart_items',
                       'flyway_schema_history'
                   )
                 """,
                 Integer.class
         );
-        assertThat(expectedTables).isEqualTo(7);
+        assertThat(expectedTables).isEqualTo(9);
     }
 
     @Test
