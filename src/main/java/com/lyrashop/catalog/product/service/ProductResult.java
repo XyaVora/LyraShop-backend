@@ -14,10 +14,16 @@ public record ProductResult(
         BigDecimal basePrice,
         Long categoryId,
         Instant createdAt,
-        Instant updatedAt
+        Instant updatedAt,
+        BigDecimal averageRating,
+        long reviewCount
 ) {
 
     public static ProductResult from(Product product) {
+        return from(product, null, 0);
+    }
+
+    public static ProductResult from(Product product, BigDecimal averageRating, long reviewCount) {
         return new ProductResult(
                 product.getId(),
                 product.getName(),
@@ -26,7 +32,9 @@ public record ProductResult(
                 product.getBasePrice(),
                 product.getCategoryId(),
                 product.getCreatedAt(),
-                product.getUpdatedAt()
+                product.getUpdatedAt(),
+                averageRating,
+                reviewCount
         );
     }
 }
