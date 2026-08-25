@@ -8,6 +8,7 @@ import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.lyrashop.catalog.product.repository.ProductRepository;
+import com.lyrashop.catalog.variant.dto.AdjustProductVariantInventoryRequest;
 import com.lyrashop.catalog.variant.dto.CreateProductVariantRequest;
 import com.lyrashop.catalog.variant.dto.UpdateProductVariantRequest;
 import com.lyrashop.catalog.variant.entity.ProductVariant;
@@ -41,6 +42,14 @@ public class ProductVariantService {
   if(!variant.isActive()) return;
   variant.deactivate();
   variants.saveAndFlush(variant);
+ }
+ @Transactional public ProductVariant adjustInventory(UUID productId, UUID variantId, AdjustProductVariantInventoryRequest r){
+  if(!products.existsById(productId)) throw new VariantProductNotFoundException();
+  ProductVariant variant=variants.findByIdAndProductId(variantId,productId).orElseThrow(VariantNotFoundException::new);
+  if(variant.getVersion()!=r.version()) throw new VariantVersionConflictException();
+  variant.adjustInventory(r.stock());
+  try{return variants.saveAndFlush(variant);}
+  catch(ObjectOptimisticLockingFailureException e){throw new VariantVersionConflictException(e);}
  }
  @Transactional(readOnly = true) public List<ProductVariantResult> listActiveForProduct(UUID productId){
   return variants.findAllByProductIdAndActiveTrueOrderBySkuAscIdAsc(productId).stream().map(ProductVariantResult::from).toList();
