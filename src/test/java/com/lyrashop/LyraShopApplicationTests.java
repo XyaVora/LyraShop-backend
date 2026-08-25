@@ -1850,6 +1850,63 @@ class LyraShopApplicationTests {
     }
 
     @Test
+    void listsActiveAndInactiveProductsForAdminsOnly() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        Category category = categoryRepository.saveAndFlush(Category.create(
+                "Admin List Category " + suffix,
+                "admin-list-category-" + suffix,
+                null,
+                null
+        ));
+        Product active = productRepository.saveAndFlush(Product.create(
+                "Admin List Active " + suffix,
+                "admin-list-active-" + suffix,
+                null,
+                new BigDecimal("21.00"),
+                category.getId()
+        ));
+        Product hidden = productRepository.saveAndFlush(Product.create(
+                "Admin List Hidden " + suffix,
+                "admin-list-hidden-" + suffix,
+                null,
+                new BigDecimal("22.00"),
+                category.getId()
+        ));
+        hidden.deactivate();
+        productRepository.saveAndFlush(hidden);
+
+        mockMvc.perform(get("/api/v1/admin/products"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/v1/admin/products")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessTokenForRole(UserRole.CUSTOMER)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+
+        var listed = mockMvc.perform(get("/api/v1/admin/products")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessTokenForRole(UserRole.ADMIN)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray())
+                .andReturn();
+        var products = objectMapper.readTree(listed.getResponse().getContentAsByteArray());
+        var activeRow = StreamSupport.stream(products.spliterator(), false)
+                .filter(node -> active.getId().toString().equals(node.path("id").asText()))
+                .findFirst()
+                .orElseThrow();
+        var hiddenRow = StreamSupport.stream(products.spliterator(), false)
+                .filter(node -> hidden.getId().toString().equals(node.path("id").asText()))
+                .findFirst()
+                .orElseThrow();
+        assertThat(activeRow.path("active").asBoolean()).isTrue();
+        assertThat(hiddenRow.path("active").asBoolean()).isFalse();
+        assertThat(hiddenRow.path("name").asText()).isEqualTo("Admin List Hidden " + suffix);
+        mockMvc.perform(get("/api/v1/products").param("keyword", suffix))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.content[0].id").value(active.getId().toString()))
+                .andExpect(jsonPath("$.content[0].active").doesNotExist());
+    }
+
+    @Test
     void exposesOnlyActiveProductsAndActiveDetailsToAnonymousClients() throws Exception {
         String suffix = UUID.randomUUID().toString();
         Category category = categoryRepository.saveAndFlush(Category.create(
