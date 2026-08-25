@@ -1872,6 +1872,60 @@ class LyraShopApplicationTests {
     }
 
     @Test
+    void attachesHttpsProductImagesForAdminsAndExposesThemOnPublicDetail() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        Category category = categoryRepository.saveAndFlush(Category.create(
+                "Image Category " + suffix, "image-category-" + suffix, null, null
+        ));
+        Product product = productRepository.saveAndFlush(Product.create(
+                "Image Product " + suffix, "image-product-" + suffix, null,
+                new BigDecimal("50.00"), category.getId()
+        ));
+        ProductVariant variant = productVariantRepository.saveAndFlush(ProductVariant.create(
+                product.getId(), "IMAGE-" + suffix, "M", "Black", new BigDecimal("55.00"), 4
+        ));
+        String path = "/api/v1/admin/products/" + product.getId() + "/images";
+        String adminToken = accessTokenForRole(UserRole.ADMIN);
+        String body = objectMapper.writeValueAsString(Map.of(
+                "url", "https://cdn.example.test/" + suffix + ".jpg",
+                "variantId", variant.getId(),
+                "primary", true,
+                "sortOrder", 1
+        ));
+
+        mockMvc.perform(post(path).contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(post(path)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessTokenForRole(UserRole.CUSTOMER))
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post(path)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"url\":\"http://cdn.example.test/x.jpg\",\"primary\":false,\"sortOrder\":0}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_PRODUCT_IMAGE_URL"));
+        mockMvc.perform(post(path)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.url").value("https://cdn.example.test/" + suffix + ".jpg"))
+                .andExpect(jsonPath("$.variantId").value(variant.getId().toString()))
+                .andExpect(jsonPath("$.primary").value(true))
+                .andExpect(jsonPath("$.productId").doesNotExist());
+
+        mockMvc.perform(get("/api/v1/products/{id}", product.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.images.length()").value(1))
+                .andExpect(jsonPath("$.images[0].url").value("https://cdn.example.test/" + suffix + ".jpg"))
+                .andExpect(jsonPath("$.images[0].primary").value(true));
+        mockMvc.perform(get("/api/v1/products").param("keyword", suffix))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].images").doesNotExist());
+    }
+
+    @Test
     void hidesProductsWhenTheirCategoryIsInactive() throws Exception {
         String suffix = UUID.randomUUID().toString();
         Category category = categoryRepository.saveAndFlush(Category.create(
@@ -2095,8 +2149,8 @@ class LyraShopApplicationTests {
         assertThat(MYSQL.isRunning()).isTrue();
         assertThat(jdbcTemplate.queryForObject("SELECT 1", Integer.class)).isEqualTo(1);
         assertThat(currentMigration).isNotNull();
-        assertThat(currentMigration.getVersion()).isEqualTo(MigrationVersion.fromVersion("4"));
-        assertThat(currentMigration.getDescription()).isEqualTo("create product variants");
+        assertThat(currentMigration.getVersion()).isEqualTo(MigrationVersion.fromVersion("5"));
+        assertThat(currentMigration.getDescription()).isEqualTo("create product images");
         assertThat(currentMigration.getState()).isEqualTo(MigrationState.SUCCESS);
         assertThat(flyway.validateWithResult().validationSuccessful).isTrue();
         assertThat(flyway.migrate().migrationsExecuted).isZero();
@@ -2116,12 +2170,13 @@ class LyraShopApplicationTests {
                       'categories',
                       'products',
                       'product_variants',
+                      'product_images',
                       'flyway_schema_history'
                   )
                 """,
                 Integer.class
         );
-        assertThat(expectedTables).isEqualTo(6);
+        assertThat(expectedTables).isEqualTo(7);
     }
 
     @Test

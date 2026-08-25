@@ -31,6 +31,7 @@ class AuthenticationRequestBodyLimitFilterTests {
     private static final String ADMIN_VARIANT_UPDATE_PATH = "/api/v1/admin/products/00000000-0000-0000-0000-000000000000/variants/11111111-1111-1111-1111-111111111111";
     private static final String ADMIN_VARIANT_DEACTIVATE_PATH = "/api/v1/admin/products/00000000-0000-0000-0000-000000000000/variants/11111111-1111-1111-1111-111111111111/deactivate";
     private static final String ADMIN_VARIANT_INVENTORY_PATH = "/api/v1/admin/products/00000000-0000-0000-0000-000000000000/variants/11111111-1111-1111-1111-111111111111/inventory";
+    private static final String ADMIN_PRODUCT_IMAGE_PATH = "/api/v1/admin/products/00000000-0000-0000-0000-000000000000/images";
     private static final int BODY_LIMIT = 16;
     private static final int BUSINESS_BODY_LIMIT = 32;
 
@@ -130,7 +131,7 @@ class AuthenticationRequestBodyLimitFilterTests {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {ADMIN_CATEGORY_PATH, ADMIN_PRODUCT_PATH, ADMIN_PRODUCT_DEACTIVATE_PATH, ADMIN_PRODUCT_UPDATE_PATH, ADMIN_VARIANT_UPDATE_PATH, ADMIN_VARIANT_DEACTIVATE_PATH, ADMIN_VARIANT_INVENTORY_PATH})
+    @ValueSource(strings = {ADMIN_CATEGORY_PATH, ADMIN_PRODUCT_PATH, ADMIN_PRODUCT_DEACTIVATE_PATH, ADMIN_PRODUCT_UPDATE_PATH, ADMIN_VARIANT_UPDATE_PATH, ADMIN_VARIANT_DEACTIVATE_PATH, ADMIN_VARIANT_INVENTORY_PATH, ADMIN_PRODUCT_IMAGE_PATH})
     void appliesBusinessBodyLimitToAdminCreation(String path) throws Exception {
         byte[] body = "x".repeat(BUSINESS_BODY_LIMIT + 1).getBytes(StandardCharsets.UTF_8);
         MockHttpServletRequest request = request(body, body.length, path);
