@@ -1,9 +1,11 @@
 package com.lyrashop.order.repository;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -11,6 +13,8 @@ import org.springframework.data.repository.query.Param;
 
 import jakarta.persistence.LockModeType;
 
+import com.lyrashop.dashboard.repository.BestSellerProjection;
+import com.lyrashop.dashboard.repository.OrderStatusCount;
 import com.lyrashop.order.entity.ShopOrder;
 
 public interface ShopOrderRepository extends JpaRepository<ShopOrder, UUID> {
@@ -40,5 +44,40 @@ public interface ShopOrderRepository extends JpaRepository<ShopOrder, UUID> {
               )
             """)
     boolean hasDeliveredProduct(@Param("userId") UUID userId, @Param("productId") UUID productId);
+
+    @Query("""
+            select coalesce(sum(shopOrder.totalAmount), 0)
+            from ShopOrder shopOrder
+            where shopOrder.paymentStatus = com.lyrashop.order.entity.PaymentStatus.PAID
+            """)
+    BigDecimal sumPaidTotal();
+
+    @Query("""
+            select count(shopOrder)
+            from ShopOrder shopOrder
+            where shopOrder.paymentStatus = com.lyrashop.order.entity.PaymentStatus.PAID
+            """)
+    long countPaid();
+
+    @Query("""
+            select shopOrder.status as status, count(shopOrder) as total
+            from ShopOrder shopOrder
+            group by shopOrder.status
+            """)
+    List<OrderStatusCount> countGroupedByStatus();
+
+    @Query("""
+            select variant.productId as productId,
+                   min(item.productName) as productName,
+                   coalesce(sum(item.quantity), 0) as quantitySold,
+                   coalesce(sum(item.subtotal), 0) as revenue
+            from ShopOrder shopOrder
+            join shopOrder.items item
+            join com.lyrashop.catalog.variant.entity.ProductVariant variant on variant.id = item.variantId
+            where shopOrder.status <> com.lyrashop.order.entity.OrderStatus.CANCELLED
+            group by variant.productId
+            order by sum(item.quantity) desc, sum(item.subtotal) desc, variant.productId asc
+            """)
+    List<BestSellerProjection> findBestSellers(Pageable pageable);
 }
 

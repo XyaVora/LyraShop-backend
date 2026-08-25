@@ -142,6 +142,8 @@ public class SecurityConfig {
                         .hasAnyRole(UserRole.CUSTOMER.name(), UserRole.ADMIN.name())
                         .requestMatchers(HttpMethod.PUT, "/api/v1/orders/{id}/cancel")
                         .hasAnyRole(UserRole.CUSTOMER.name(), UserRole.ADMIN.name())
+                        .requestMatchers(HttpMethod.GET, "/api/v1/admin/dashboard")
+                        .hasRole(UserRole.ADMIN.name())
                         .requestMatchers(HttpMethod.GET, "/api/v1/admin/orders", "/api/v1/admin/orders/{id}")
                         .hasRole(UserRole.ADMIN.name())
                         .requestMatchers(HttpMethod.PUT, "/api/v1/admin/orders/{id}/status")
