@@ -20,6 +20,7 @@ import com.lyrashop.catalog.product.service.ProductCategoryNotFoundException;
 import com.lyrashop.catalog.product.service.ProductNotFoundException;
 import com.lyrashop.catalog.product.service.ProductQueryException;
 import com.lyrashop.catalog.product.service.ProductSlugAlreadyExistsException;
+import com.lyrashop.catalog.product.service.InvalidProductImageUrlException;
 import com.lyrashop.catalog.product.service.ProductVersionConflictException;
 
 import com.lyrashop.catalog.variant.service.VariantProductNotFoundException;
@@ -185,6 +186,22 @@ public class GlobalExceptionHandler {
                 "Product was modified by another request",
                 request.getRequestURI()
         ));
+    }
+
+    @ExceptionHandler(InvalidProductImageUrlException.class)
+    ResponseEntity<ApiErrorResponse> handleInvalidProductImageUrl(
+            InvalidProductImageUrlException exception,
+            HttpServletRequest request
+    ) {
+        return problem(
+                HttpStatus.BAD_REQUEST,
+                ApiErrorResponse.of(
+                        HttpStatus.BAD_REQUEST.value(),
+                        "INVALID_PRODUCT_IMAGE_URL",
+                        "Product image URL is invalid",
+                        request.getRequestURI()
+                )
+        );
     }
 
     @ExceptionHandler(ProductQueryException.class)

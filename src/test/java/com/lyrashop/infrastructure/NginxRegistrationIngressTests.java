@@ -62,6 +62,7 @@ class NginxRegistrationIngressTests {
     private static final String ADMIN_PRODUCT_PATH = "/api/v1/admin/products";
     private static final String ADMIN_VARIANT_DEACTIVATE_PATH = "/api/v1/admin/products/00000000-0000-0000-0000-000000000000/variants/11111111-1111-1111-1111-111111111111/deactivate";
     private static final String ADMIN_VARIANT_INVENTORY_PATH = "/api/v1/admin/products/00000000-0000-0000-0000-000000000000/variants/11111111-1111-1111-1111-111111111111/inventory";
+    private static final String ADMIN_PRODUCT_IMAGE_PATH = "/api/v1/admin/products/00000000-0000-0000-0000-000000000000/images";
     private static final Network NETWORK = Network.newNetwork();
     private static final GenericContainer<?> UPSTREAM_A = upstream("a");
     private static final GenericContainer<?> UPSTREAM_B = upstream("b");
@@ -182,6 +183,49 @@ class NginxRegistrationIngressTests {
     }
 
     @Test
+    void proxiesAndRejectsProductImagePathVariants() throws Exception {
+        try (Gateway gateway = startGateway(Policy.highCapacity())) {
+            HttpRequest.BodyPublisher body = HttpRequest.BodyPublishers.ofString(
+                    "{\"url\":\"https://cdn.example.test/a.jpg\",\"primary\":true,\"sortOrder\":0}"
+            );
+            HttpResponse<String> valid = send(
+                    gateway,
+                    "POST",
+                    ADMIN_PRODUCT_IMAGE_PATH,
+                    body,
+                    Map.of("Content-Type", "application/json")
+            );
+            HttpResponse<String> oversized = send(
+                    gateway,
+                    "POST",
+                    ADMIN_PRODUCT_IMAGE_PATH,
+                    HttpRequest.BodyPublishers.ofByteArray(new byte[8193]),
+                    Map.of("Content-Type", "application/json")
+            );
+            assertThat(oversized.statusCode()).isEqualTo(413);
+            HttpResponse<String> trailingSlash = send(
+                    gateway,
+                    "POST",
+                    ADMIN_PRODUCT_IMAGE_PATH + "/",
+                    HttpRequest.BodyPublishers.noBody(),
+                    Map.of()
+            );
+            HttpResponse<String> matrixParameter = send(
+                    gateway,
+                    "POST",
+                    ADMIN_PRODUCT_IMAGE_PATH + ";scope=other",
+                    HttpRequest.BodyPublishers.noBody(),
+                    Map.of()
+            );
+
+            assertThat(valid.statusCode()).isEqualTo(200);
+            assertThat(header(valid, "X-Upstream-Id")).isIn("a", "b");
+            assertThat(trailingSlash.statusCode()).isEqualTo(404);
+            assertThat(matrixParameter.statusCode()).isEqualTo(404);
+        }
+    }
+
+    @Test
     void rendersACompleteValidConfiguration() throws Exception {
         try (Gateway gateway = startGateway(Policy.productionDefaults())) {
             Container.ExecResult syntaxCheck = gateway.container().execInContainer("nginx", "-t");
@@ -231,6 +275,7 @@ class NginxRegistrationIngressTests {
                             "location ~ ^/api/v1/admin/products/[0-9a-fA-F-]+/deactivate$",
                             "location ~ ^/api/v1/admin/products/[0-9a-fA-F-]+/variants/[0-9a-fA-F-]+/deactivate$",
                             "location ~ ^/api/v1/admin/products/[0-9a-fA-F-]+/variants/[0-9a-fA-F-]+/inventory$",
+                            "location ~ ^/api/v1/admin/products/[0-9a-fA-F-]+/images$",
                             "location = /api/v1/auth/login",
                             "location = /api/v1/auth/refresh",
                             "location = /api/v1/auth/logout",
