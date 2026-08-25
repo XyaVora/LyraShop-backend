@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
 
 import com.lyrashop.catalog.category.dto.CreateCategoryRequest;
+import com.lyrashop.catalog.category.dto.UpdateCategoryRequest;
 import com.lyrashop.catalog.category.entity.Category;
 import com.lyrashop.catalog.category.repository.CategoryRepository;
 import com.lyrashop.exception.CategoryNotFoundException;
@@ -78,6 +79,42 @@ public class CategoryService {
             }
             throw exception;
         }
+    }
+
+    @Transactional
+    public CategoryResult update(@NotNull Long id, @NotNull @Valid UpdateCategoryRequest request) {
+        Category category = categoryRepository.findById(id)
+                .orElseThrow(CategoryNotFoundException::new);
+        if (request.parentId() != null) {
+            if (request.parentId().equals(id)
+                    || !categoryRepository.existsByIdAndActiveTrue(request.parentId())) {
+                throw new CategoryNotFoundException();
+            }
+        }
+        String slug = Category.normalizeSlug(request.slug());
+        if (categoryRepository.existsBySlugAndIdNot(slug, id)) {
+            throw new CategorySlugAlreadyExistsException();
+        }
+        category.update(request.name(), slug, request.description(), request.parentId());
+        try {
+            return CategoryResult.from(categoryRepository.saveAndFlush(category));
+        } catch (DataIntegrityViolationException exception) {
+            if (isSlugUniqueViolation(exception)) {
+                throw new CategorySlugAlreadyExistsException(exception);
+            }
+            throw exception;
+        }
+    }
+
+    @Transactional
+    public void deactivate(@NotNull Long id) {
+        Category category = categoryRepository.findById(id)
+                .orElseThrow(CategoryNotFoundException::new);
+        if (!category.isActive()) {
+            return;
+        }
+        category.deactivate();
+        categoryRepository.saveAndFlush(category);
     }
 
     private static boolean isSlugUniqueViolation(Throwable failure) {
