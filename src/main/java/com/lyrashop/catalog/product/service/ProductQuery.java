@@ -10,6 +10,8 @@ import com.lyrashop.catalog.category.entity.Category;
 public record ProductQuery(
         String keyword,
         String categorySlug,
+        String variantSize,
+        String color,
         BigDecimal minPrice,
         BigDecimal maxPrice,
         int page,
@@ -23,6 +25,8 @@ public record ProductQuery(
     public static ProductQuery from(
             String keyword,
             String category,
+            String variantSize,
+            String color,
             String minPrice,
             String maxPrice,
             String sort,
@@ -41,6 +45,8 @@ public record ProductQuery(
         return new ProductQuery(
                 normalizedKeyword,
                 normalizedCategory,
+                normalizeVariantAttribute(variantSize, 20),
+                normalizeVariantAttribute(color, 50),
                 parsedMin,
                 parsedMax,
                 parsedPage,
@@ -63,6 +69,15 @@ public record ProductQuery(
         } catch (IllegalArgumentException exception) {
             throw new ProductQueryException();
         }
+    }
+
+    private static String normalizeVariantAttribute(String value, int maxLength) {
+        if (value == null || value.isBlank()) return null;
+        String normalized = value.strip().toLowerCase(Locale.ROOT);
+        if (normalized.isEmpty() || normalized.length() > maxLength) {
+            throw new ProductQueryException();
+        }
+        return normalized;
     }
 
     private static BigDecimal parsePrice(String value) {

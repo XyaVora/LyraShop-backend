@@ -4,9 +4,11 @@ import java.util.Locale;
 
 import org.springframework.data.jpa.domain.Specification;
 
+import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Subquery;
 
 import com.lyrashop.catalog.product.entity.Product;
+import com.lyrashop.catalog.variant.entity.ProductVariant;
 
 public final class ProductSpecifications {
 
@@ -58,6 +60,31 @@ public final class ProductSpecifications {
 
     public static Specification<Product> maxPrice(java.math.BigDecimal price) {
         return (root, query, builder) -> builder.lessThanOrEqualTo(root.get("basePrice"), price);
+    }
+
+    public static Specification<Product> activeVariant(String variantSize, String color) {
+        return (root, query, builder) -> {
+            Subquery<java.util.UUID> subquery = query.subquery(java.util.UUID.class);
+            var variant = subquery.from(ProductVariant.class);
+            Predicate match = builder.and(
+                    builder.equal(variant.get("productId"), root.get("id")),
+                    builder.isTrue(variant.get("active"))
+            );
+            if (variantSize != null) {
+                match = builder.and(
+                        match,
+                        builder.equal(builder.lower(variant.get("size")), variantSize)
+                );
+            }
+            if (color != null) {
+                match = builder.and(
+                        match,
+                        builder.equal(builder.lower(variant.get("color")), color)
+                );
+            }
+            subquery.select(variant.get("id")).where(match);
+            return builder.exists(subquery);
+        };
     }
 
     private static String escapeLike(String value) {
