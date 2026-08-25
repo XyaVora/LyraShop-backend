@@ -2004,6 +2004,88 @@ class LyraShopApplicationTests {
                         .param("maxPrice", "10.00"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_PRODUCT_QUERY"));
+
+        mockMvc.perform(get("/api/v1/products").param("variantSize", "x".repeat(21)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_PRODUCT_QUERY"));
+
+        mockMvc.perform(get("/api/v1/products").param("color", "c".repeat(51)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_PRODUCT_QUERY"));
+    }
+
+    @Test
+    void filtersPublicProductsByActiveVariantSizeAndColor() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        Category category = categoryRepository.saveAndFlush(Category.create(
+                "Variant Filter Category " + suffix,
+                "variant-filter-category-" + suffix,
+                null,
+                null
+        ));
+        Product matching = productRepository.saveAndFlush(Product.create(
+                "Matching Variant Filter " + suffix,
+                "matching-variant-filter-" + suffix,
+                null,
+                new BigDecimal("40.00"),
+                category.getId()
+        ));
+        Product splitAttributes = productRepository.saveAndFlush(Product.create(
+                "Split Variant Filter " + suffix,
+                "split-variant-filter-" + suffix,
+                null,
+                new BigDecimal("41.00"),
+                category.getId()
+        ));
+        Product inactiveVariantOnly = productRepository.saveAndFlush(Product.create(
+                "Inactive Variant Filter " + suffix,
+                "inactive-variant-filter-" + suffix,
+                null,
+                new BigDecimal("42.00"),
+                category.getId()
+        ));
+        productVariantRepository.saveAndFlush(ProductVariant.create(
+                matching.getId(), "FILTER-M-BLACK-" + suffix, "M", "Black", new BigDecimal("40.00"), 4
+        ));
+        productVariantRepository.saveAndFlush(ProductVariant.create(
+                matching.getId(), "FILTER-L-WHITE-" + suffix, "L", "White", new BigDecimal("41.00"), 2
+        ));
+        productVariantRepository.saveAndFlush(ProductVariant.create(
+                splitAttributes.getId(), "FILTER-M-WHITE-" + suffix, "M", "White", new BigDecimal("41.00"), 3
+        ));
+        productVariantRepository.saveAndFlush(ProductVariant.create(
+                splitAttributes.getId(), "FILTER-L-BLACK-" + suffix, "L", "Black", new BigDecimal("42.00"), 3
+        ));
+        ProductVariant inactive = productVariantRepository.saveAndFlush(ProductVariant.create(
+                inactiveVariantOnly.getId(), "FILTER-M-BLACK-INACTIVE-" + suffix, "M", "Black",
+                new BigDecimal("42.00"), 5
+        ));
+        inactive.deactivate();
+        productVariantRepository.saveAndFlush(inactive);
+
+        mockMvc.perform(get("/api/v1/products")
+                        .param("keyword", suffix)
+                        .param("variantSize", "m")
+                        .param("color", "BLACK")
+                        .param("sort", "name,asc"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(1))
+                .andExpect(jsonPath("$.content[0].id").value(matching.getId().toString()))
+                .andExpect(jsonPath("$.totalElements").value(1));
+
+        mockMvc.perform(get("/api/v1/products")
+                        .param("keyword", suffix)
+                        .param("variantSize", "M"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(2));
+
+        mockMvc.perform(get("/api/v1/products")
+                        .param("keyword", suffix)
+                        .param("color", "black")
+                        .param("size", "20"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content.length()").value(2))
+                .andExpect(jsonPath("$.size").value(20));
     }
 
     @Test
