@@ -121,6 +121,16 @@ public class SecurityConfig {
                         .hasRole(UserRole.ADMIN.name())
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/admin/products/{productId}/variants/{variantId}/inventory")
                         .hasRole(UserRole.ADMIN.name())
+                        .requestMatchers(HttpMethod.GET, "/api/v1/cart")
+                        .hasAnyRole(UserRole.CUSTOMER.name(), UserRole.ADMIN.name())
+                        .requestMatchers(HttpMethod.POST, "/api/v1/cart/items")
+                        .hasAnyRole(UserRole.CUSTOMER.name(), UserRole.ADMIN.name())
+                        .requestMatchers(HttpMethod.PUT, "/api/v1/cart/items/{itemId}")
+                        .hasAnyRole(UserRole.CUSTOMER.name(), UserRole.ADMIN.name())
+                        .requestMatchers(HttpMethod.DELETE, "/api/v1/cart/items/{itemId}")
+                        .hasAnyRole(UserRole.CUSTOMER.name(), UserRole.ADMIN.name())
+                        .requestMatchers(HttpMethod.DELETE, "/api/v1/cart")
+                        .hasAnyRole(UserRole.CUSTOMER.name(), UserRole.ADMIN.name())
                         .anyRequest().denyAll()
                 );
 
@@ -163,7 +173,8 @@ public class SecurityConfig {
                 HttpMethod.GET.name(),
                 HttpMethod.POST.name(),
                 HttpMethod.PATCH.name(),
-                HttpMethod.PUT.name()
+                HttpMethod.PUT.name(),
+                HttpMethod.DELETE.name()
         ));
         configuration.setAllowedHeaders(List.of(
                 HttpHeaders.ACCEPT,
