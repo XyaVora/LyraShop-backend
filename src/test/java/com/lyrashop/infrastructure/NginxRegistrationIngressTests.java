@@ -313,6 +313,40 @@ class NginxRegistrationIngressTests {
     }
 
     @Test
+    void proxiesAndRejectsAdminProductListPathVariants() throws Exception {
+        try (Gateway gateway = startGateway(Policy.highCapacity())) {
+            HttpResponse<String> valid = send(
+                    gateway,
+                    "GET",
+                    ADMIN_PRODUCT_PATH,
+                    HttpRequest.BodyPublishers.noBody(),
+                    Map.of()
+            );
+            HttpResponse<String> trailingSlash = send(
+                    gateway,
+                    "GET",
+                    ADMIN_PRODUCT_PATH + "/",
+                    HttpRequest.BodyPublishers.noBody(),
+                    Map.of()
+            );
+            HttpResponse<String> matrixParameter = send(
+                    gateway,
+                    "GET",
+                    ADMIN_PRODUCT_PATH + ";scope=other",
+                    HttpRequest.BodyPublishers.noBody(),
+                    Map.of()
+            );
+
+            assertThat(valid.statusCode()).isEqualTo(200);
+            assertThat(header(valid, "X-Upstream-Id")).isIn("a", "b");
+            assertThat(trailingSlash.statusCode()).isEqualTo(404);
+            assertThat(matrixParameter.statusCode()).isEqualTo(404);
+            assertThat(trailingSlash.headers().firstValue("X-Upstream-Id")).isEmpty();
+            assertThat(matrixParameter.headers().firstValue("X-Upstream-Id")).isEmpty();
+        }
+    }
+
+    @Test
     void rendersACompleteValidConfiguration() throws Exception {
         try (Gateway gateway = startGateway(Policy.productionDefaults())) {
             Container.ExecResult syntaxCheck = gateway.container().execInContainer("nginx", "-t");
