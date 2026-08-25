@@ -17,6 +17,8 @@ public record ProductDetailResponse(
         Long categoryId,
         Instant createdAt,
         Instant updatedAt,
+        BigDecimal averageRating,
+        long reviewCount,
         List<PublicProductVariantResponse> variants,
         List<ProductImageResponse> images
 ) {
@@ -32,6 +34,8 @@ public record ProductDetailResponse(
                 product.categoryId(),
                 product.createdAt(),
                 product.updatedAt(),
+                product.averageRating(),
+                product.reviewCount(),
                 detail.variants().stream().map(PublicProductVariantResponse::from).toList(),
                 detail.images().stream().map(ProductImageResponse::from).toList()
         );

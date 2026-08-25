@@ -14,7 +14,9 @@ public record ProductResponse(
         BigDecimal basePrice,
         Long categoryId,
         Instant createdAt,
-        Instant updatedAt
+        Instant updatedAt,
+        BigDecimal averageRating,
+        long reviewCount
 ) {
 
     public static ProductResponse from(ProductResult product) {
@@ -26,7 +28,9 @@ public record ProductResponse(
                 product.basePrice(),
                 product.categoryId(),
                 product.createdAt(),
-                product.updatedAt()
+                product.updatedAt(),
+                product.averageRating(),
+                product.reviewCount()
         );
     }
 }
