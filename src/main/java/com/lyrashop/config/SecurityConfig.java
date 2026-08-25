@@ -131,6 +131,16 @@ public class SecurityConfig {
                         .hasAnyRole(UserRole.CUSTOMER.name(), UserRole.ADMIN.name())
                         .requestMatchers(HttpMethod.DELETE, "/api/v1/cart")
                         .hasAnyRole(UserRole.CUSTOMER.name(), UserRole.ADMIN.name())
+                        .requestMatchers(HttpMethod.GET, "/api/v1/orders", "/api/v1/orders/{id}")
+                        .hasAnyRole(UserRole.CUSTOMER.name(), UserRole.ADMIN.name())
+                        .requestMatchers(HttpMethod.POST, "/api/v1/orders")
+                        .hasAnyRole(UserRole.CUSTOMER.name(), UserRole.ADMIN.name())
+                        .requestMatchers(HttpMethod.PUT, "/api/v1/orders/{id}/cancel")
+                        .hasAnyRole(UserRole.CUSTOMER.name(), UserRole.ADMIN.name())
+                        .requestMatchers(HttpMethod.GET, "/api/v1/admin/orders", "/api/v1/admin/orders/{id}")
+                        .hasRole(UserRole.ADMIN.name())
+                        .requestMatchers(HttpMethod.PUT, "/api/v1/admin/orders/{id}/status")
+                        .hasRole(UserRole.ADMIN.name())
                         .anyRequest().denyAll()
                 );
 

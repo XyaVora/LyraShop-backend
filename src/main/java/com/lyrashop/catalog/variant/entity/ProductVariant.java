@@ -98,6 +98,20 @@ public class ProductVariant {
         this.stock = stock;
     }
 
+    public void decrementStock(int quantity) {
+        if (quantity < 1 || quantity > stock) {
+            throw new IllegalArgumentException("quantity exceeds stock");
+        }
+        this.stock -= quantity;
+    }
+
+    public void incrementStock(int quantity) {
+        if (quantity < 1) {
+            throw new IllegalArgumentException("quantity must be at least 1");
+        }
+        this.stock += quantity;
+    }
+
     public void deactivate() {
         this.active = false;
     }

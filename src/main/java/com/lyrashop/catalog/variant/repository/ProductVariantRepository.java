@@ -33,6 +33,10 @@ public interface ProductVariantRepository extends JpaRepository<ProductVariant, 
             @Param("variantId") UUID variantId
     );
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select variant from ProductVariant variant where variant.id = :variantId")
+    Optional<ProductVariant> findForStockUpdate(@Param("variantId") UUID variantId);
+
     List<PublicProductVariantProjection> findAllByProductIdAndActiveTrueOrderBySkuAscIdAsc(UUID productId);
 
     boolean existsBySkuAndIdNot(String sku, UUID id);
