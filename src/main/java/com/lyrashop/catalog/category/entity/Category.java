@@ -95,6 +95,13 @@ public class Category {
         return active;
     }
 
+    public void update(String name, String slug, String description, Long parentId) {
+        this.name = normalizeText(name, "name", 100);
+        this.slug = normalizeSlug(slug);
+        this.description = normalizeNullable(description, 2_000);
+        this.parentId = validateParentId(parentId);
+    }
+
     public void deactivate() {
         active = false;
     }
