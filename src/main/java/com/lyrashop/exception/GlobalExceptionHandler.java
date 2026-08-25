@@ -23,6 +23,10 @@ import com.lyrashop.catalog.product.service.ProductSlugAlreadyExistsException;
 import com.lyrashop.catalog.product.service.InvalidProductImageUrlException;
 import com.lyrashop.catalog.product.service.ProductVersionConflictException;
 
+import com.lyrashop.order.service.EmptyCartException;
+import com.lyrashop.order.service.InvalidOrderStatusException;
+import com.lyrashop.order.service.InvalidPaymentMethodException;
+import com.lyrashop.order.service.OrderNotFoundException;
 import com.lyrashop.cart.service.CartItemNotFoundException;
 import com.lyrashop.cart.service.InsufficientStockException;
 import com.lyrashop.catalog.variant.service.VariantProductNotFoundException;
@@ -303,6 +307,38 @@ public class GlobalExceptionHandler {
                         "Refresh token is invalid",
                         request.getRequestURI()
                 ));
+    }
+
+    @ExceptionHandler(EmptyCartException.class)
+    ResponseEntity<ApiErrorResponse> handleEmptyCart(EmptyCartException exception, HttpServletRequest request) {
+        return problem(HttpStatus.BAD_REQUEST, ApiErrorResponse.of(
+                HttpStatus.BAD_REQUEST.value(), "EMPTY_CART", "Cart has no items", request.getRequestURI()));
+    }
+
+    @ExceptionHandler(OrderNotFoundException.class)
+    ResponseEntity<ApiErrorResponse> handleOrderNotFound(OrderNotFoundException exception, HttpServletRequest request) {
+        return problem(HttpStatus.NOT_FOUND, ApiErrorResponse.of(
+                HttpStatus.NOT_FOUND.value(), "ORDER_NOT_FOUND", "Order was not found", request.getRequestURI()));
+    }
+
+    @ExceptionHandler(InvalidOrderStatusException.class)
+    ResponseEntity<ApiErrorResponse> handleInvalidOrderStatus(
+            InvalidOrderStatusException exception,
+            HttpServletRequest request
+    ) {
+        return problem(HttpStatus.CONFLICT, ApiErrorResponse.of(
+                HttpStatus.CONFLICT.value(), "INVALID_ORDER_STATUS", "Order status transition is not allowed",
+                request.getRequestURI()));
+    }
+
+    @ExceptionHandler(InvalidPaymentMethodException.class)
+    ResponseEntity<ApiErrorResponse> handleInvalidPaymentMethod(
+            InvalidPaymentMethodException exception,
+            HttpServletRequest request
+    ) {
+        return problem(HttpStatus.BAD_REQUEST, ApiErrorResponse.of(
+                HttpStatus.BAD_REQUEST.value(), "INVALID_PAYMENT_METHOD", "Payment method is not supported",
+                request.getRequestURI()));
     }
 
     @ExceptionHandler(InsufficientStockException.class)

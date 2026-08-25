@@ -1927,6 +1927,57 @@ class LyraShopApplicationTests {
     }
 
     @Test
+    void createsCodOrderFromCartDecrementsStockAndRestoresItOnCancel() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        Category category = categoryRepository.saveAndFlush(Category.create(
+                "Order Category " + suffix, "order-category-" + suffix, null, null
+        ));
+        Product product = productRepository.saveAndFlush(Product.create(
+                "Order Product " + suffix, "order-product-" + suffix, null,
+                new BigDecimal("50.00"), category.getId()
+        ));
+        ProductVariant variant = productVariantRepository.saveAndFlush(ProductVariant.create(
+                product.getId(), "ORDER-" + suffix, "M", "Black", new BigDecimal("55.00"), 4
+        ));
+        String customerToken = accessTokenForRole(UserRole.CUSTOMER);
+        mockMvc.perform(post("/api/v1/cart/items")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + customerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "variantId", variant.getId(),
+                                "quantity", 2
+                        ))))
+                .andExpect(status().isCreated());
+        var created = mockMvc.perform(post("/api/v1/orders")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + customerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "shippingAddress", "12 Test Street",
+                                "shippingPhone", "0900000000",
+                                "paymentMethod", "COD"
+                        ))))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.status").value("PENDING"))
+                .andExpect(jsonPath("$.paymentMethod").value("COD"))
+                .andExpect(jsonPath("$.paymentStatus").value("UNPAID"))
+                .andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.items[0].quantity").value(2))
+                .andReturn();
+        String orderId = objectMapper.readTree(created.getResponse().getContentAsByteArray()).path("id").asText();
+        entityManager.clear();
+        assertThat(productVariantRepository.findById(variant.getId()).orElseThrow().getStock()).isEqualTo(2);
+        mockMvc.perform(get("/api/v1/cart")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + customerToken))
+                .andExpect(jsonPath("$.items").isEmpty());
+        mockMvc.perform(put("/api/v1/orders/{id}/cancel", orderId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + customerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CANCELLED"));
+        entityManager.clear();
+        assertThat(productVariantRepository.findById(variant.getId()).orElseThrow().getStock()).isEqualTo(4);
+    }
+
+    @Test
     void managesCustomerCartQuantityAgainstVariantStock() throws Exception {
         String suffix = UUID.randomUUID().toString();
         Category category = categoryRepository.saveAndFlush(Category.create(
@@ -2203,8 +2254,8 @@ class LyraShopApplicationTests {
         assertThat(MYSQL.isRunning()).isTrue();
         assertThat(jdbcTemplate.queryForObject("SELECT 1", Integer.class)).isEqualTo(1);
         assertThat(currentMigration).isNotNull();
-        assertThat(currentMigration.getVersion()).isEqualTo(MigrationVersion.fromVersion("6"));
-        assertThat(currentMigration.getDescription()).isEqualTo("create carts");
+        assertThat(currentMigration.getVersion()).isEqualTo(MigrationVersion.fromVersion("7"));
+        assertThat(currentMigration.getDescription()).isEqualTo("create orders");
         assertThat(currentMigration.getState()).isEqualTo(MigrationState.SUCCESS);
         assertThat(flyway.validateWithResult().validationSuccessful).isTrue();
         assertThat(flyway.migrate().migrationsExecuted).isZero();
@@ -2227,12 +2278,14 @@ class LyraShopApplicationTests {
                       'product_images',
                       'carts',
                       'cart_items',
+                      'orders',
+                      'order_items',
                       'flyway_schema_history'
                   )
                 """,
                 Integer.class
         );
-        assertThat(expectedTables).isEqualTo(9);
+        assertThat(expectedTables).isEqualTo(11);
     }
 
     @Test
