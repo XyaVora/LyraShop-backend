@@ -61,6 +61,7 @@ class NginxRegistrationIngressTests {
     private static final String LOGOUT_PATH = "/api/v1/auth/logout";
     private static final String ADMIN_PRODUCT_PATH = "/api/v1/admin/products";
     private static final String ADMIN_VARIANT_DEACTIVATE_PATH = "/api/v1/admin/products/00000000-0000-0000-0000-000000000000/variants/11111111-1111-1111-1111-111111111111/deactivate";
+    private static final String ADMIN_VARIANT_INVENTORY_PATH = "/api/v1/admin/products/00000000-0000-0000-0000-000000000000/variants/11111111-1111-1111-1111-111111111111/inventory";
     private static final Network NETWORK = Network.newNetwork();
     private static final GenericContainer<?> UPSTREAM_A = upstream("a");
     private static final GenericContainer<?> UPSTREAM_B = upstream("b");
@@ -128,6 +129,59 @@ class NginxRegistrationIngressTests {
     }
 
     @Test
+    void proxiesAndRejectsInventoryAdjustmentPathVariants() throws Exception {
+        try (Gateway gateway = startGateway(Policy.highCapacity())) {
+            HttpRequest.BodyPublisher body = HttpRequest.BodyPublishers.ofString("{\"stock\":5,\"version\":0}");
+            HttpResponse<String> valid = send(
+                    gateway,
+                    "PATCH",
+                    ADMIN_VARIANT_INVENTORY_PATH,
+                    body,
+                    Map.of("Content-Type", "application/json")
+            );
+            HttpResponse<String> oversized = send(
+                    gateway,
+                    "PATCH",
+                    ADMIN_VARIANT_INVENTORY_PATH,
+                    HttpRequest.BodyPublishers.ofByteArray(new byte[8193]),
+                    Map.of("Content-Type", "application/json")
+            );
+            assertThat(oversized.statusCode()).isEqualTo(413);
+            assertThat(oversized.headers().firstValue("X-Upstream-Id")).isEmpty();
+            HttpResponse<String> trailingSlash = send(
+                    gateway,
+                    "PATCH",
+                    ADMIN_VARIANT_INVENTORY_PATH + "/",
+                    HttpRequest.BodyPublishers.noBody(),
+                    Map.of()
+            );
+            HttpResponse<String> matrixParameter = send(
+                    gateway,
+                    "PATCH",
+                    ADMIN_VARIANT_INVENTORY_PATH + ";scope=other",
+                    HttpRequest.BodyPublishers.noBody(),
+                    Map.of()
+            );
+            HttpResponse<String> encodedMatrixParameter = send(
+                    gateway,
+                    "PATCH",
+                    ADMIN_VARIANT_INVENTORY_PATH + "%3Bscope=other",
+                    HttpRequest.BodyPublishers.noBody(),
+                    Map.of()
+            );
+
+            assertThat(valid.statusCode()).isEqualTo(200);
+            assertThat(header(valid, "X-Upstream-Id")).isIn("a", "b");
+            assertThat(trailingSlash.statusCode()).isEqualTo(404);
+            assertThat(matrixParameter.statusCode()).isEqualTo(404);
+            assertThat(encodedMatrixParameter.statusCode()).isEqualTo(404);
+            assertThat(trailingSlash.headers().firstValue("X-Upstream-Id")).isEmpty();
+            assertThat(matrixParameter.headers().firstValue("X-Upstream-Id")).isEmpty();
+            assertThat(encodedMatrixParameter.headers().firstValue("X-Upstream-Id")).isEmpty();
+        }
+    }
+
+    @Test
     void rendersACompleteValidConfiguration() throws Exception {
         try (Gateway gateway = startGateway(Policy.productionDefaults())) {
             Container.ExecResult syntaxCheck = gateway.container().execInContainer("nginx", "-t");
@@ -176,6 +230,7 @@ class NginxRegistrationIngressTests {
                             "location ~ ^/api/v1/admin/products/[0-9a-fA-F-]+$",
                             "location ~ ^/api/v1/admin/products/[0-9a-fA-F-]+/deactivate$",
                             "location ~ ^/api/v1/admin/products/[0-9a-fA-F-]+/variants/[0-9a-fA-F-]+/deactivate$",
+                            "location ~ ^/api/v1/admin/products/[0-9a-fA-F-]+/variants/[0-9a-fA-F-]+/inventory$",
                             "location = /api/v1/auth/login",
                             "location = /api/v1/auth/refresh",
                             "location = /api/v1/auth/logout",

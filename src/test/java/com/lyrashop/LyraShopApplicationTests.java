@@ -1279,6 +1279,181 @@ class LyraShopApplicationTests {
     }
 
     @Test
+    void adjustsVariantInventoryForAdminsWithoutChangingCatalogFields() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        Category category = categoryRepository.saveAndFlush(Category.create(
+                "Inventory Category " + suffix, "inventory-category-" + suffix, null, null
+        ));
+        Product product = productRepository.saveAndFlush(Product.create(
+                "Inventory Product " + suffix, "inventory-product-" + suffix, null,
+                new BigDecimal("50.00"), category.getId()
+        ));
+        ProductVariant variant = productVariantRepository.saveAndFlush(ProductVariant.create(
+                product.getId(), "INVENTORY-" + suffix, "M", "Black", new BigDecimal("55.00"), 4
+        ));
+        String path = "/api/v1/admin/products/" + product.getId()
+                + "/variants/" + variant.getId() + "/inventory";
+        String body = objectMapper.writeValueAsString(Map.of("stock", 17, "version", variant.getVersion()));
+        String adminToken = accessTokenForRole(UserRole.ADMIN);
+
+        mockMvc.perform(patch(path).contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(patch(path)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessTokenForRole(UserRole.CUSTOMER))
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(patch(path)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.variantId").value(variant.getId().toString()))
+                .andExpect(jsonPath("$.stock").value(17))
+                .andExpect(jsonPath("$.version").value(1))
+                .andExpect(jsonPath("$.updatedAt").exists())
+                .andExpect(jsonPath("$.productId").doesNotExist())
+                .andExpect(jsonPath("$.sku").doesNotExist())
+                .andExpect(jsonPath("$.active").doesNotExist());
+
+        entityManager.clear();
+        ProductVariant updated = productVariantRepository.findById(variant.getId()).orElseThrow();
+        assertThat(updated.getStock()).isEqualTo(17);
+        assertThat(updated.getSku()).isEqualTo(variant.getSku());
+        assertThat(updated.getPrice()).isEqualByComparingTo(variant.getPrice());
+        assertThat(updated.isActive()).isTrue();
+        mockMvc.perform(patch(path)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("VARIANT_VERSION_CONFLICT"));
+    }
+
+    @Test
+    void validatesInventoryOwnershipAndAllowsInactiveCatalogRecords() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        Category category = categoryRepository.saveAndFlush(Category.create(
+                "Inventory Mapping Category " + suffix, "inventory-mapping-category-" + suffix, null, null
+        ));
+        Product product = productRepository.saveAndFlush(Product.create(
+                "Inventory Mapping Product " + suffix, "inventory-mapping-product-" + suffix, null,
+                new BigDecimal("50.00"), category.getId()
+        ));
+        Product otherProduct = productRepository.saveAndFlush(Product.create(
+                "Other Inventory Product " + suffix, "other-inventory-product-" + suffix, null,
+                new BigDecimal("45.00"), category.getId()
+        ));
+        ProductVariant variant = productVariantRepository.saveAndFlush(ProductVariant.create(
+                product.getId(), "INVENTORY-MAPPING-" + suffix, "M", "Black", new BigDecimal("55.00"), 4
+        ));
+        String adminToken = accessTokenForRole(UserRole.ADMIN);
+        String path = "/api/v1/admin/products/" + product.getId()
+                + "/variants/" + variant.getId() + "/inventory";
+
+        mockMvc.perform(patch("/api/v1/admin/products/{productId}/variants/{variantId}/inventory",
+                        otherProduct.getId(), variant.getId())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"stock\":3,\"version\":0}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("VARIANT_NOT_FOUND"));
+        mockMvc.perform(patch("/api/v1/admin/products/not-a-uuid/variants/{variantId}/inventory", variant.getId())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"stock\":3,\"version\":0}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("VARIANT_PRODUCT_NOT_FOUND"));
+        mockMvc.perform(patch("/api/v1/admin/products/{productId}/variants/not-a-uuid/inventory", product.getId())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"stock\":3,\"version\":0}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("VARIANT_NOT_FOUND"));
+        mockMvc.perform(patch("/api/v1/admin/products/00000000-0000-0000-0000-000000000000/variants/{variantId}/inventory", variant.getId())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"stock\":3,\"version\":0}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("VARIANT_PRODUCT_NOT_FOUND"));
+        mockMvc.perform(patch(path)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"stock\":-1,\"version\":0}"))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(patch(path)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"stock\":3,\"version\":0,\"sku\":\"MASS-ASSIGNMENT\"}"))
+                .andExpect(status().isBadRequest());
+
+        variant.deactivate();
+        product.deactivate();
+        productVariantRepository.saveAndFlush(variant);
+        productRepository.saveAndFlush(product);
+        mockMvc.perform(patch(path)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"stock\":9,\"version\":1}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.stock").value(9))
+                .andExpect(jsonPath("$.version").value(2));
+    }
+
+    @Test
+    void serializesConcurrentInventoryAdjustmentsWithExpectedVersion() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        Category category = categoryRepository.saveAndFlush(Category.create(
+                "Concurrent Inventory Category " + suffix, "concurrent-inventory-category-" + suffix, null, null
+        ));
+        Product product = productRepository.saveAndFlush(Product.create(
+                "Concurrent Inventory Product " + suffix, "concurrent-inventory-product-" + suffix, null,
+                new BigDecimal("50.00"), category.getId()
+        ));
+        ProductVariant variant = productVariantRepository.saveAndFlush(ProductVariant.create(
+                product.getId(), "CONCURRENT-INVENTORY-" + suffix, "M", "Black", new BigDecimal("55.00"), 4
+        ));
+        String path = "/api/v1/admin/products/" + product.getId()
+                + "/variants/" + variant.getId() + "/inventory";
+        String adminToken = accessTokenForRole(UserRole.ADMIN);
+        CyclicBarrier barrier = new CyclicBarrier(2);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+
+        try {
+            Future<Integer> first = executor.submit(() -> patchInventoryAfterBarrier(path, adminToken, 0, 10, barrier));
+            Future<Integer> second = executor.submit(() -> patchInventoryAfterBarrier(path, adminToken, 0, 20, barrier));
+            assertThat(List.of(
+                    first.get(30, TimeUnit.SECONDS),
+                    second.get(30, TimeUnit.SECONDS)
+            )).containsExactlyInAnyOrder(200, 409);
+        } finally {
+            executor.shutdownNow();
+        }
+
+        entityManager.clear();
+        ProductVariant updated = productVariantRepository.findById(variant.getId()).orElseThrow();
+        assertThat(updated.getStock()).isIn(10, 20);
+        assertThat(updated.getVersion()).isEqualTo(1L);
+    }
+
+    private int patchInventoryAfterBarrier(
+            String path,
+            String adminToken,
+            long version,
+            int stock,
+            CyclicBarrier barrier
+    ) throws Exception {
+        barrier.await(30, TimeUnit.SECONDS);
+        return mockMvc.perform(patch(path)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "stock", stock,
+                                "version", version
+                        ))))
+                .andReturn()
+                .getResponse()
+                .getStatus();
+    }
+
+    @Test
     void deactivatesVariantsForAdminsAndKeepsTheOperationIdempotent() throws Exception {
         String suffix = UUID.randomUUID().toString();
         Category category = categoryRepository.saveAndFlush(Category.create(
