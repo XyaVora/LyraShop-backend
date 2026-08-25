@@ -128,6 +128,11 @@ public class ProductService {
             }
             specification = specification.and(ProductSpecifications.categoryId(categoryId));
         }
+        if (query.variantSize() != null || query.color() != null) {
+            specification = specification.and(
+                    ProductSpecifications.activeVariant(query.variantSize(), query.color())
+            );
+        }
         return productRepository.findAll(specification, pageable).map(ProductResult::from);
     }
 
