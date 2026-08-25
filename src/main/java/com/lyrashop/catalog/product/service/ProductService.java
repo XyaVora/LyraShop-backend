@@ -31,15 +31,18 @@ public class ProductService {
     private final ProductRepository productRepository;
     private final CategoryRepository categoryRepository;
     private final ProductVariantService productVariantService;
+    private final ProductImageService productImageService;
 
     public ProductService(
             ProductRepository productRepository,
             CategoryRepository categoryRepository,
-            ProductVariantService productVariantService
+            ProductVariantService productVariantService,
+            ProductImageService productImageService
     ) {
         this.productRepository = productRepository;
         this.categoryRepository = categoryRepository;
         this.productVariantService = productVariantService;
+        this.productImageService = productImageService;
     }
 
     @Transactional
@@ -176,7 +179,11 @@ public class ProductService {
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public ProductDetailResult getActiveDetail(UUID id) {
         ProductResult product = getActive(id);
-        return new ProductDetailResult(product, productVariantService.listActiveForProduct(id));
+        return new ProductDetailResult(
+                product,
+                productVariantService.listActiveForProduct(id),
+                productImageService.listForProduct(id)
+        );
     }
 
     @Transactional(readOnly = true)

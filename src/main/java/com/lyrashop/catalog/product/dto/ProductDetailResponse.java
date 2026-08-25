@@ -17,7 +17,8 @@ public record ProductDetailResponse(
         Long categoryId,
         Instant createdAt,
         Instant updatedAt,
-        List<PublicProductVariantResponse> variants
+        List<PublicProductVariantResponse> variants,
+        List<ProductImageResponse> images
 ) {
 
     public static ProductDetailResponse from(ProductDetailResult detail) {
@@ -31,7 +32,8 @@ public record ProductDetailResponse(
                 product.categoryId(),
                 product.createdAt(),
                 product.updatedAt(),
-                detail.variants().stream().map(PublicProductVariantResponse::from).toList()
+                detail.variants().stream().map(PublicProductVariantResponse::from).toList(),
+                detail.images().stream().map(ProductImageResponse::from).toList()
         );
     }
 }
