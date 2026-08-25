@@ -35,6 +35,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.StreamSupport;
 
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.FlywayException;
@@ -2101,6 +2102,136 @@ class LyraShopApplicationTests {
                 .andExpect(jsonPath("$.status").value("CANCELLED"));
         entityManager.clear();
         assertThat(productVariantRepository.findById(variant.getId()).orElseThrow().getStock()).isEqualTo(4);
+    }
+
+    @Test
+    void reportsPaidRevenueOrderCountsAndBestSellersForAdmins() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        String adminToken = accessTokenForRole(UserRole.ADMIN);
+        mockMvc.perform(get("/api/v1/admin/dashboard"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/v1/admin/dashboard")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessTokenForRole(UserRole.CUSTOMER)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+
+        var beforeResult = mockMvc.perform(get("/api/v1/admin/dashboard")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.revenue.paidTotal").exists())
+                .andExpect(jsonPath("$.orders.total").exists())
+                .andExpect(jsonPath("$.bestSellers").isArray())
+                .andReturn();
+        var before = objectMapper.readTree(beforeResult.getResponse().getContentAsByteArray());
+
+        Category category = categoryRepository.saveAndFlush(Category.create(
+                "Dashboard Category " + suffix, "dashboard-category-" + suffix, null, null
+        ));
+        Product soldProduct = productRepository.saveAndFlush(Product.create(
+                "Dashboard Sold " + suffix, "dashboard-sold-" + suffix, null,
+                new BigDecimal("50.00"), category.getId()
+        ));
+        Product cancelledProduct = productRepository.saveAndFlush(Product.create(
+                "Dashboard Cancelled " + suffix, "dashboard-cancelled-" + suffix, null,
+                new BigDecimal("80.00"), category.getId()
+        ));
+        ProductVariant soldVariant = productVariantRepository.saveAndFlush(ProductVariant.create(
+                soldProduct.getId(), "DASH-SOLD-" + suffix, "M", "Black", new BigDecimal("55.00"), 10
+        ));
+        ProductVariant cancelledVariant = productVariantRepository.saveAndFlush(ProductVariant.create(
+                cancelledProduct.getId(), "DASH-CANCEL-" + suffix, "L", "White", new BigDecimal("80.00"), 10
+        ));
+
+        String buyerToken = accessTokenForRole(UserRole.CUSTOMER);
+        mockMvc.perform(post("/api/v1/cart/items")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + buyerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "variantId", soldVariant.getId(),
+                                "quantity", 2
+                        ))))
+                .andExpect(status().isCreated());
+        var delivered = mockMvc.perform(post("/api/v1/orders")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + buyerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "shippingAddress", "12 Dashboard Street",
+                                "shippingPhone", "0900000001",
+                                "paymentMethod", "COD"
+                        ))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String deliveredOrderId = objectMapper.readTree(delivered.getResponse().getContentAsByteArray())
+                .path("id")
+                .asText();
+        for (String status : List.of("CONFIRMED", "PROCESSING", "SHIPPING", "DELIVERED")) {
+            mockMvc.perform(put("/api/v1/admin/orders/{id}/status", deliveredOrderId)
+                            .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(Map.of("status", status))))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value(status));
+        }
+
+        String cancellingToken = accessTokenForRole(UserRole.CUSTOMER);
+        mockMvc.perform(post("/api/v1/cart/items")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + cancellingToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "variantId", cancelledVariant.getId(),
+                                "quantity", 5
+                        ))))
+                .andExpect(status().isCreated());
+        var cancelled = mockMvc.perform(post("/api/v1/orders")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + cancellingToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "shippingAddress", "34 Dashboard Street",
+                                "shippingPhone", "0900000002",
+                                "paymentMethod", "COD"
+                        ))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String cancelledOrderId = objectMapper.readTree(cancelled.getResponse().getContentAsByteArray())
+                .path("id")
+                .asText();
+        mockMvc.perform(put("/api/v1/orders/{id}/cancel", cancelledOrderId)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + cancellingToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CANCELLED"));
+
+        var afterResult = mockMvc.perform(get("/api/v1/admin/dashboard")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.passwordHash").doesNotExist())
+                .andReturn();
+        var after = objectMapper.readTree(afterResult.getResponse().getContentAsByteArray());
+
+        assertThat(after.path("revenue").path("paidTotal").decimalValue())
+                .isEqualByComparingTo(before.path("revenue").path("paidTotal").decimalValue().add(new BigDecimal("110.00")));
+        assertThat(after.path("revenue").path("paidOrderCount").asLong())
+                .isEqualTo(before.path("revenue").path("paidOrderCount").asLong() + 1);
+        assertThat(after.path("orders").path("total").asLong())
+                .isEqualTo(before.path("orders").path("total").asLong() + 2);
+        assertThat(after.path("orders").path("delivered").asLong())
+                .isEqualTo(before.path("orders").path("delivered").asLong() + 1);
+        assertThat(after.path("orders").path("cancelled").asLong())
+                .isEqualTo(before.path("orders").path("cancelled").asLong() + 1);
+        assertThat(after.path("orders").path("pending").asLong())
+                .isEqualTo(before.path("orders").path("pending").asLong());
+
+        var bestSellers = after.path("bestSellers");
+        assertThat(bestSellers.isArray()).isTrue();
+        var soldEntry = StreamSupport.stream(bestSellers.spliterator(), false)
+                .filter(node -> soldProduct.getId().toString().equals(node.path("productId").asText()))
+                .findFirst()
+                .orElseThrow();
+        assertThat(soldEntry.path("productName").asText()).isEqualTo("Dashboard Sold " + suffix);
+        assertThat(soldEntry.path("quantitySold").asLong()).isEqualTo(2);
+        assertThat(soldEntry.path("revenue").decimalValue()).isEqualByComparingTo("110.00");
+        assertThat(StreamSupport.stream(bestSellers.spliterator(), false)
+                .noneMatch(node -> cancelledProduct.getId().toString().equals(node.path("productId").asText())))
+                .isTrue();
     }
 
     @Test
