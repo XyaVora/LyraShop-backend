@@ -1026,6 +1026,105 @@ class LyraShopApplicationTests {
     }
 
     @Test
+    void updatesCategoryForAdminsWithoutReactivating() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        Category parent = categoryRepository.saveAndFlush(Category.create(
+                "Parent Category " + suffix, "parent-category-" + suffix, null, null
+        ));
+        Category category = categoryRepository.saveAndFlush(Category.create(
+                "Original Category " + suffix, "original-category-" + suffix, "Before", null
+        ));
+        String path = "/api/v1/admin/categories/" + category.getId();
+        String body = categoryJson(
+                "Renamed Category " + suffix,
+                "renamed-category-" + suffix,
+                "After",
+                parent.getId()
+        );
+        String adminToken = accessTokenForRole(UserRole.ADMIN);
+
+        mockMvc.perform(put(path).contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(put(path)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessTokenForRole(UserRole.CUSTOMER))
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(put(path)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body.replace("}", ",\"sku\":\"MASS-ASSIGN\"}")))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(put(path)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("Renamed Category " + suffix))
+                .andExpect(jsonPath("$.slug").value("renamed-category-" + suffix))
+                .andExpect(jsonPath("$.parentId").value(parent.getId()))
+                .andExpect(jsonPath("$.active").doesNotExist());
+
+        category.deactivate();
+        categoryRepository.saveAndFlush(category);
+        mockMvc.perform(put(path)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(categoryJson(
+                                "Still Inactive " + suffix,
+                                "still-inactive-" + suffix,
+                                null,
+                                null
+                        )))
+                .andExpect(status().isOk());
+        entityManager.clear();
+        assertThat(categoryRepository.findById(category.getId()).orElseThrow().isActive()).isFalse();
+        mockMvc.perform(get("/api/v1/categories/{id}", category.getId()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("CATEGORY_NOT_FOUND"));
+        mockMvc.perform(put("/api/v1/admin/categories/{id}", category.getId())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(categoryJson("Self Parent", "self-parent-" + suffix, null, category.getId())))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("CATEGORY_NOT_FOUND"));
+    }
+
+    @Test
+    void deactivatesCategoriesForAdminsAndHidesThemIdempotently() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        Category category = categoryRepository.saveAndFlush(Category.create(
+                "Hide Category " + suffix, "hide-category-" + suffix, null, null
+        ));
+        String path = "/api/v1/admin/categories/" + category.getId() + "/deactivate";
+        String adminToken = accessTokenForRole(UserRole.ADMIN);
+
+        mockMvc.perform(patch(path))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(patch(path)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessTokenForRole(UserRole.CUSTOMER)))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(patch(path)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isNoContent())
+                .andExpect(content().string(emptyString()));
+        entityManager.clear();
+        assertThat(categoryRepository.findById(category.getId()).orElseThrow().isActive()).isFalse();
+        mockMvc.perform(get("/api/v1/categories/{id}", category.getId()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("CATEGORY_NOT_FOUND"));
+        mockMvc.perform(patch(path)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isNoContent());
+        mockMvc.perform(patch("/api/v1/admin/categories/not-a-number/deactivate")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("CATEGORY_NOT_FOUND"));
+        mockMvc.perform(patch("/api/v1/admin/categories/0/deactivate")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("CATEGORY_NOT_FOUND"));
+    }
+
+    @Test
     void mapsConcurrentCategorySlugRaceToOneCreatedAndOneConflict() throws Exception {
         String suffix = UUID.randomUUID().toString();
         String slug = "concurrent-category-" + suffix;

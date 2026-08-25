@@ -63,6 +63,8 @@ class NginxRegistrationIngressTests {
     private static final String ADMIN_VARIANT_DEACTIVATE_PATH = "/api/v1/admin/products/00000000-0000-0000-0000-000000000000/variants/11111111-1111-1111-1111-111111111111/deactivate";
     private static final String ADMIN_VARIANT_INVENTORY_PATH = "/api/v1/admin/products/00000000-0000-0000-0000-000000000000/variants/11111111-1111-1111-1111-111111111111/inventory";
     private static final String ADMIN_PRODUCT_IMAGE_PATH = "/api/v1/admin/products/00000000-0000-0000-0000-000000000000/images";
+    private static final String ADMIN_CATEGORY_UPDATE_PATH = "/api/v1/admin/categories/12";
+    private static final String ADMIN_CATEGORY_DEACTIVATE_PATH = "/api/v1/admin/categories/12/deactivate";
     private static final Network NETWORK = Network.newNetwork();
     private static final GenericContainer<?> UPSTREAM_A = upstream("a");
     private static final GenericContainer<?> UPSTREAM_B = upstream("b");
@@ -226,6 +228,56 @@ class NginxRegistrationIngressTests {
     }
 
     @Test
+    void proxiesAndRejectsCategoryUpdateAndDeactivatePathVariants() throws Exception {
+        try (Gateway gateway = startGateway(Policy.highCapacity())) {
+            HttpResponse<String> updated = send(
+                    gateway,
+                    "PUT",
+                    ADMIN_CATEGORY_UPDATE_PATH,
+                    HttpRequest.BodyPublishers.ofString(
+                            "{\"name\":\"Renamed\",\"slug\":\"renamed\",\"description\":null}"
+                    ),
+                    Map.of("Content-Type", "application/json")
+            );
+            HttpResponse<String> deactivated = send(
+                    gateway,
+                    "PATCH",
+                    ADMIN_CATEGORY_DEACTIVATE_PATH,
+                    HttpRequest.BodyPublishers.noBody(),
+                    Map.of()
+            );
+            HttpResponse<String> oversized = send(
+                    gateway,
+                    "PUT",
+                    ADMIN_CATEGORY_UPDATE_PATH,
+                    HttpRequest.BodyPublishers.ofByteArray(new byte[8193]),
+                    Map.of("Content-Type", "application/json")
+            );
+            HttpResponse<String> trailingSlash = send(
+                    gateway,
+                    "PATCH",
+                    ADMIN_CATEGORY_DEACTIVATE_PATH + "/",
+                    HttpRequest.BodyPublishers.noBody(),
+                    Map.of()
+            );
+            HttpResponse<String> matrixParameter = send(
+                    gateway,
+                    "PUT",
+                    ADMIN_CATEGORY_UPDATE_PATH + ";scope=other",
+                    HttpRequest.BodyPublishers.noBody(),
+                    Map.of()
+            );
+
+            assertThat(updated.statusCode()).isEqualTo(200);
+            assertThat(deactivated.statusCode()).isEqualTo(200);
+            assertThat(header(updated, "X-Upstream-Id")).isIn("a", "b");
+            assertThat(oversized.statusCode()).isEqualTo(413);
+            assertThat(trailingSlash.statusCode()).isEqualTo(404);
+            assertThat(matrixParameter.statusCode()).isEqualTo(404);
+        }
+    }
+
+    @Test
     void rendersACompleteValidConfiguration() throws Exception {
         try (Gateway gateway = startGateway(Policy.productionDefaults())) {
             Container.ExecResult syntaxCheck = gateway.container().execInContainer("nginx", "-t");
@@ -270,6 +322,8 @@ class NginxRegistrationIngressTests {
                             "client_max_body_size 4096;",
                             "client_max_body_size 1024;",
                             "location = /api/v1/admin/categories",
+                            "location ~ ^/api/v1/admin/categories/[0-9]+$",
+                            "location ~ ^/api/v1/admin/categories/[0-9]+/deactivate$",
                             "location = /api/v1/admin/products",
                             "location ~ ^/api/v1/admin/products/[0-9a-fA-F-]+$",
                             "location ~ ^/api/v1/admin/products/[0-9a-fA-F-]+/deactivate$",
