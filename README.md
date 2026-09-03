@@ -47,19 +47,43 @@ Ambiguous paths (trailing slash, matrix parameters) are still rejected by the Ng
 
 ## Run locally
 
-Set the required database environment variables before starting the application:
+This path is for daily development: MySQL in Docker, the API on the host.
+
+1. Start Docker Desktop and wait until it is ready.
+2. From the repo root:
 
 ```powershell
-$env:DB_URL="jdbc:mysql://localhost:3306/lyrashop_db?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true"
-$env:DB_USERNAME="lyrashop"
-$env:DB_PASSWORD="replace-with-a-local-password"
-$jwtKey = New-Object byte[] 32
-[System.Security.Cryptography.RandomNumberGenerator]::Fill($jwtKey)
-$env:JWT_SECRET_BASE64=[Convert]::ToBase64String($jwtKey)
-.\mvnw.cmd spring-boot:run
+.\scripts\local-up.ps1
 ```
 
-The application listens on port `8080` by default. Set `SERVER_PORT` to override it.
+On Linux or macOS:
+
+```sh
+chmod +x scripts/local-up.sh scripts/local-down.sh
+./scripts/local-up.sh
+```
+
+The script starts MySQL on `127.0.0.1:3307` (container 3306), then `spring-boot:run` with the `dev` profile. Host 3306 is often reserved on Windows.
+
+- API: `http://127.0.0.1:8080`
+- Health: `http://127.0.0.1:8081/actuator/health`
+
+Stop MySQL with `.\scripts\local-down.ps1` (or `./scripts/local-down.sh`).
+
+Register a customer (password at least 12 characters). PowerShell mangles inline JSON, so use a file:
+
+```powershell
+@'
+{"email":"you@example.com","password":"LocalPass1234","fullName":"Local User"}
+'@ | Set-Content -Encoding ascii register.json
+curl.exe -sS -X POST http://127.0.0.1:8080/api/v1/auth/register `
+  -H "Content-Type: application/json" `
+  --data-binary "@register.json"
+```
+
+Login returns `accessToken`. Send it as `Authorization: Bearer ...` on cart, orders, and admin routes. Refresh cookies are `Secure`; use the access token for local HTTP calls.
+
+The `dev` profile is for this machine only. Production still uses `compose.yaml` with secret files and no published database port.
 
 ## Authentication API
 
