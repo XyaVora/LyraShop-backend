@@ -27,6 +27,24 @@ The verification suite starts a disposable MySQL 8.0 container. Docker must be r
 CI also runs `bash .github/scripts/test-compose-deployment.sh` to build the
 runtime image and verify the private network boundary end to end.
 
+Without Docker, compile and unit tests still run:
+
+```powershell
+.\mvnw.cmd --batch-mode --no-transfer-progress test "-Dtest=!LyraShopApplicationTests,!NginxRegistrationIngressTests"
+```
+
+## Adding an endpoint
+
+Keep new business routes under an existing prefix so Security and Nginx stay untouched:
+
+1. Put ADMIN handlers under `/api/v1/admin/**` with `@PreAuthorize("hasRole('ADMIN')")`.
+2. Put customer cart/order handlers under `/api/v1/cart/**` or `/api/v1/orders/**`.
+3. Add a MockMvc test for anonymous `401`, wrong role `403`, and the happy path.
+4. Only add a Security matcher or Nginx `location` when the path is a **new prefix** (not under `admin`, `cart`, or `orders`).
+5. Keep auth, health, and public catalog matchers explicit. Unknown prefixes stay deny-all.
+
+Ambiguous paths (trailing slash, matrix parameters) are still rejected by the Nginx map.
+
 ## Run locally
 
 Set the required database environment variables before starting the application:

@@ -968,6 +968,13 @@ class LyraShopApplicationTests {
         mockMvc.perform(get("/api/v1/admin/not-implemented")
                         .header(
                                 HttpHeaders.AUTHORIZATION,
+                                "Bearer " + accessTokenForRole(UserRole.CUSTOMER)
+                        ))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+        mockMvc.perform(get("/api/v1/not-implemented")
+                        .header(
+                                HttpHeaders.AUTHORIZATION,
                                 "Bearer " + accessTokenForRole(UserRole.ADMIN)
                         ))
                 .andExpect(status().isForbidden())
