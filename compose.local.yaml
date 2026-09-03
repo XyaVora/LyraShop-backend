@@ -1,0 +1,32 @@
+name: lyrashop-local
+
+# Local MySQL only. Production compose.yaml is unchanged and does not publish
+# the database. This file is for spring-boot:run on the host.
+
+services:
+  mysql:
+    image: mysql:8.0.46@sha256:7dcddc01f13bab2f15cde676d44d01f61fc9f99fe7785e86196dfc07d358ae2b
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3307:3306"
+    environment:
+      MYSQL_DATABASE: lyrashop_db
+      MYSQL_USER: lyrashop
+      MYSQL_PASSWORD: lyrashop_local
+      MYSQL_ROOT_PASSWORD: lyrashop_root_local
+      TZ: UTC
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --default-time-zone=+00:00
+    volumes:
+      - lyrashop_local_mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "--silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 20s
+
+volumes:
+  lyrashop_local_mysql:
