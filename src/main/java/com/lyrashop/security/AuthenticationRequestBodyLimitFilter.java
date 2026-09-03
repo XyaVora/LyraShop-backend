@@ -39,38 +39,13 @@ public class AuthenticationRequestBodyLimitFilter extends OncePerRequestFilter {
                     .matcher(HttpMethod.POST, "/api/v1/auth/logout")
     );
     private static final RequestMatcher BUSINESS_REQUEST = new OrRequestMatcher(
+            PathPatternRequestMatcher.withDefaults().matcher("/api/v1/admin/**"),
+            PathPatternRequestMatcher.withDefaults().matcher("/api/v1/cart"),
+            PathPatternRequestMatcher.withDefaults().matcher("/api/v1/cart/**"),
+            PathPatternRequestMatcher.withDefaults().matcher("/api/v1/orders"),
+            PathPatternRequestMatcher.withDefaults().matcher("/api/v1/orders/**"),
             PathPatternRequestMatcher.withDefaults()
-                    .matcher(HttpMethod.POST, "/api/v1/admin/categories"),
-            PathPatternRequestMatcher.withDefaults()
-                    .matcher(HttpMethod.PUT, "/api/v1/admin/categories/{id}"),
-            PathPatternRequestMatcher.withDefaults()
-                    .matcher(HttpMethod.PATCH, "/api/v1/admin/categories/{id}/deactivate"),
-            PathPatternRequestMatcher.withDefaults()
-                    .matcher(HttpMethod.POST, "/api/v1/admin/products"),
-            PathPatternRequestMatcher.withDefaults()
-                    .matcher(HttpMethod.POST, "/api/v1/admin/products/{productId}/images"),
-            PathPatternRequestMatcher.withDefaults()
-                    .matcher(HttpMethod.POST, "/api/v1/cart/items"),
-            PathPatternRequestMatcher.withDefaults()
-                    .matcher(HttpMethod.PUT, "/api/v1/cart/items/{itemId}"),
-            PathPatternRequestMatcher.withDefaults()
-                    .matcher(HttpMethod.POST, "/api/v1/orders"),
-            PathPatternRequestMatcher.withDefaults()
-                    .matcher(HttpMethod.PUT, "/api/v1/admin/orders/{id}/status"),
-            PathPatternRequestMatcher.withDefaults()
-                    .matcher(HttpMethod.POST, "/api/v1/products/{productId}/reviews"),
-            PathPatternRequestMatcher.withDefaults()
-                    .matcher(HttpMethod.PUT, "/api/v1/admin/users/{id}/status"),
-            PathPatternRequestMatcher.withDefaults()
-                    .matcher(HttpMethod.PUT, "/api/v1/admin/products/{id}"),
-            PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.POST, "/api/v1/admin/products/{productId}/variants"),
-            PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.PUT, "/api/v1/admin/products/{productId}/variants/{variantId}"),
-            PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.PATCH, "/api/v1/admin/products/{productId}/variants/{variantId}/deactivate"),
-            PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.PATCH, "/api/v1/admin/products/{productId}/variants/{variantId}/inventory"),
-            PathPatternRequestMatcher.withDefaults()
-                    .matcher(HttpMethod.PATCH, "/api/v1/admin/products/{id}/deactivate"),
-            PathPatternRequestMatcher.withDefaults()
-                    .matcher(HttpMethod.PATCH, "/api/v1/admin/products/{id}/activate")
+                    .matcher(HttpMethod.POST, "/api/v1/products/{productId}/reviews")
     );
 
     private final int authenticationMaxRequestBodyBytes;
