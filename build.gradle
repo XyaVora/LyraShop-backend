@@ -37,9 +37,35 @@ dependencies {
     testImplementation "org.testcontainers:mysql"
 }
 
+def dockerReachable() {
+    try {
+        def process = new ProcessBuilder("docker", "info")
+            .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+            .redirectError(ProcessBuilder.Redirect.DISCARD)
+            .start()
+        if (!process.waitFor(8, java.util.concurrent.TimeUnit.SECONDS)) {
+            process.destroyForcibly()
+            return false
+        }
+        return process.exitValue() == 0
+    } catch (Exception ignored) {
+        return false
+    }
+}
+
+def skipDockerTests = project.hasProperty("skipDockerTests") ||
+        (System.getenv("CI") != "true" && !dockerReachable())
+
+if (skipDockerTests) {
+    logger.lifecycle(
+            "Skipping Testcontainers tests (LyraShopApplicationTests, NginxRegistrationIngressTests). " +
+                    "CI always runs them; force a skip with -PskipDockerTests."
+    )
+}
+
 tasks.withType(Test).configureEach {
     useJUnitPlatform()
-    if (project.hasProperty("skipDockerTests")) {
+    if (skipDockerTests) {
         exclude "**/LyraShopApplicationTests.class"
         exclude "**/NginxRegistrationIngressTests.class"
     }
