@@ -1,7 +1,10 @@
 * text=auto
 
-mvnw text eol=lf
+gradlew text eol=lf
 *.cmd text eol=crlf
+*.gradle text eol=lf
+*.properties text eol=lf
+gradle/wrapper/gradle-wrapper.jar binary
 *.java text eol=lf
 *.xml text eol=lf
 *.sql text eol=lf

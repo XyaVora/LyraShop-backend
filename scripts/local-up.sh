@@ -19,4 +19,4 @@ echo "MySQL is up. Starting Spring Boot on http://127.0.0.1:8080 ..."
 echo "Health: http://127.0.0.1:8081/actuator/health"
 echo "Stop MySQL later with: ./scripts/local-down.sh"
 
-exec ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
+exec ./gradlew --no-daemon bootRun --args="--spring.profiles.active=dev"
