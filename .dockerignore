@@ -1,7 +1,10 @@
 **
-!pom.xml
-!mvnw
-!.mvn/
-!.mvn/**
+!build.gradle
+!settings.gradle
+!gradle.properties
+!gradlew
+!gradlew.bat
+!gradle/
+!gradle/**
 !src/
 !src/**

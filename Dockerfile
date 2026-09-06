@@ -2,15 +2,14 @@ FROM eclipse-temurin:25-jdk-alpine@sha256:3852a237086a660157560241b45ba32a547adc
 
 WORKDIR /workspace
 
-COPY .mvn/ .mvn/
-COPY mvnw pom.xml ./
-RUN chmod +x mvnw
+COPY gradle/ gradle/
+COPY gradlew gradlew.bat settings.gradle build.gradle gradle.properties ./
+RUN chmod +x gradlew
 
 COPY src/ src/
-RUN ./mvnw --batch-mode --no-transfer-progress clean package -Dmaven.test.skip=true \
-    && set -- target/*.jar \
-    && test "$#" -eq 1 \
-    && cp "$1" /workspace/app.jar
+RUN ./gradlew --no-daemon bootJar -x test \
+    && test -f build/libs/app.jar \
+    && cp build/libs/app.jar /workspace/app.jar
 
 FROM eclipse-temurin:25-jre-alpine@sha256:cdd967aa55f1d0175ebe57245e4450292e6e6dd185dce73f93580598934128aa AS runtime
 

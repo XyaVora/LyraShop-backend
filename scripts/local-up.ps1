@@ -32,7 +32,7 @@ Write-Host "MySQL is up. Starting Spring Boot on http://127.0.0.1:8080 ..."
 Write-Host "Health: http://127.0.0.1:8081/actuator/health"
 Write-Host "Stop MySQL later with: .\scripts\local-down.ps1"
 
-& .\mvnw.cmd spring-boot:run "-Dspring-boot.run.profiles=dev"
+& .\gradlew.bat --no-daemon bootRun --args="--spring.profiles.active=dev"
 if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }

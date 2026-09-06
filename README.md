@@ -7,20 +7,20 @@ Spring Boot REST API for the LyraShop e-commerce platform.
 - Java 25
 - Docker with a running Linux container engine
 
-Maven is provided through the repository wrapper.
+Gradle is provided through the repository wrapper.
 
 ## Verify
 
 On Windows:
 
 ```powershell
-.\mvnw.cmd --batch-mode --no-transfer-progress clean verify
+.\gradlew.bat --no-daemon clean check
 ```
 
 On Linux or macOS:
 
 ```sh
-./mvnw --batch-mode --no-transfer-progress clean verify
+./gradlew --no-daemon clean check
 ```
 
 The verification suite starts a disposable MySQL 8.0 container. Docker must be running.
@@ -30,7 +30,7 @@ runtime image and verify the private network boundary end to end.
 Without Docker, compile and unit tests still run:
 
 ```powershell
-.\mvnw.cmd --batch-mode --no-transfer-progress test "-Dtest=!LyraShopApplicationTests,!NginxRegistrationIngressTests"
+.\gradlew.bat --no-daemon test -PskipDockerTests
 ```
 
 ## Adding an endpoint
@@ -63,7 +63,7 @@ chmod +x scripts/local-up.sh scripts/local-down.sh
 ./scripts/local-up.sh
 ```
 
-The script starts MySQL on `127.0.0.1:3307` (container 3306), then `spring-boot:run` with the `dev` profile. Host 3306 is often reserved on Windows.
+The script starts MySQL on `127.0.0.1:3307` (container 3306), then `bootRun` with the `dev` profile. Host 3306 is often reserved on Windows.
 
 - API: `http://127.0.0.1:8080`
 - Health: `http://127.0.0.1:8081/actuator/health`

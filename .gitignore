@@ -1,5 +1,7 @@
 # Build output
 target/
+build/
+.gradle/
 *.log
 
 # Local project context

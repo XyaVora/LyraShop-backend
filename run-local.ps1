@@ -24,4 +24,4 @@ Write-Host "   DB_PASSWORD = ****"
 Write-Host ""
 Write-Host "🚀 Đang khởi động Spring Boot..." -ForegroundColor Cyan
 
-.\mvnw.cmd spring-boot:run
+.\gradlew.bat --no-daemon bootRun
