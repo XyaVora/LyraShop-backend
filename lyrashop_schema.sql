@@ -1,12 +1,15 @@
 -- =============================================================================
 --  LyraShop Database Schema
---  Kết hợp từ các Flyway migrations: V1 → V4
+--  Readable snapshot of Flyway migrations V1-V8.
 --
---  Cách import:
---    mysql -u <user> -p < lyrashop_schema.sql
---  Hoặc trong MySQL Workbench / DBeaver: File → Run SQL Script
+--  Source of truth for the running API:
+--    src/main/resources/db/migration
+--  Local Docker MySQL (scripts/local-up.ps1) is migrated by Flyway on startup.
+--  Do not import this file into that database; CREATE TABLE would then collide
+--  with Flyway V1-V8.
 --
---  Yêu cầu: MySQL 8.0+
+--  Workbench / DBeaver: File -> Run SQL Script against an empty inspection DB.
+--  Require MySQL 8.0+.
 -- =============================================================================
 
 -- Tạo database nếu chưa có
@@ -211,8 +214,192 @@ CREATE TABLE IF NOT EXISTS product_variants (
 
 
 -- =============================================================================
---  Tạo user MySQL cho ứng dụng (tuỳ chọn — bỏ comment nếu cần)
---  Thay thế 'your_password' bằng mật khẩu thực
+--  V5 -- Catalog: product_images
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS product_images (
+    id          BIGINT          NOT NULL AUTO_INCREMENT,
+    product_id  BINARY(16)      NOT NULL,
+    variant_id  BINARY(16)      NULL,
+    url         VARCHAR(2048)   NOT NULL,
+    is_primary  BOOLEAN         NOT NULL DEFAULT FALSE,
+    sort_order  INT             NOT NULL DEFAULT 0,
+    created_at  DATETIME(6)     NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    updated_at  DATETIME(6)     NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+
+    CONSTRAINT pk_product_images
+        PRIMARY KEY (id),
+    CONSTRAINT fk_product_images_product
+        FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE CASCADE,
+    CONSTRAINT fk_product_images_variant
+        FOREIGN KEY (variant_id) REFERENCES product_variants (id) ON DELETE SET NULL,
+    CONSTRAINT chk_product_images_url_not_blank
+        CHECK (CHAR_LENGTH(TRIM(url)) > 0),
+    CONSTRAINT chk_product_images_primary
+        CHECK (is_primary IN (0, 1)),
+    CONSTRAINT chk_product_images_sort_order
+        CHECK (sort_order >= 0),
+
+    INDEX idx_product_images_product_sort (product_id, sort_order, id),
+    INDEX idx_product_images_variant      (variant_id, id)
+
+) ENGINE = InnoDB
+  DEFAULT CHARACTER SET utf8mb4
+  COLLATE utf8mb4_0900_ai_ci;
+
+
+-- =============================================================================
+--  V6 -- Carts
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS carts (
+    id          BINARY(16)      NOT NULL,
+    user_id     BINARY(16)      NOT NULL,
+    created_at  DATETIME(6)     NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    updated_at  DATETIME(6)     NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+
+    CONSTRAINT pk_carts
+        PRIMARY KEY (id),
+    CONSTRAINT uk_carts_user
+        UNIQUE (user_id),
+    CONSTRAINT fk_carts_user
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+
+) ENGINE = InnoDB
+  DEFAULT CHARACTER SET utf8mb4
+  COLLATE utf8mb4_0900_ai_ci;
+
+
+CREATE TABLE IF NOT EXISTS cart_items (
+    id          BIGINT          NOT NULL AUTO_INCREMENT,
+    cart_id     BINARY(16)      NOT NULL,
+    variant_id  BINARY(16)      NOT NULL,
+    quantity    INT             NOT NULL DEFAULT 1,
+    created_at  DATETIME(6)     NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    updated_at  DATETIME(6)     NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+
+    CONSTRAINT pk_cart_items
+        PRIMARY KEY (id),
+    CONSTRAINT uk_cart_items_cart_variant
+        UNIQUE (cart_id, variant_id),
+    CONSTRAINT fk_cart_items_cart
+        FOREIGN KEY (cart_id) REFERENCES carts (id) ON DELETE CASCADE,
+    CONSTRAINT fk_cart_items_variant
+        FOREIGN KEY (variant_id) REFERENCES product_variants (id) ON DELETE RESTRICT,
+    CONSTRAINT chk_cart_items_quantity
+        CHECK (quantity >= 1)
+
+) ENGINE = InnoDB
+  DEFAULT CHARACTER SET utf8mb4
+  COLLATE utf8mb4_0900_ai_ci;
+
+
+-- =============================================================================
+--  V7 -- Orders
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS orders (
+    id                  BINARY(16)      NOT NULL,
+    user_id             BINARY(16)      NOT NULL,
+    total_amount        DECIMAL(12, 2)  NOT NULL,
+    status              VARCHAR(30)     CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT 'PENDING',
+    payment_method      VARCHAR(30)     CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    payment_status      VARCHAR(20)     CHARACTER SET ascii COLLATE ascii_bin NOT NULL DEFAULT 'UNPAID',
+    shipping_address    TEXT            NOT NULL,
+    shipping_phone      VARCHAR(20)     NOT NULL,
+    note                TEXT            NULL,
+    created_at          DATETIME(6)     NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    updated_at          DATETIME(6)     NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+
+    CONSTRAINT pk_orders
+        PRIMARY KEY (id),
+    CONSTRAINT fk_orders_user
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE RESTRICT,
+    CONSTRAINT chk_orders_total
+        CHECK (total_amount >= 0),
+    CONSTRAINT chk_orders_status
+        CHECK (status IN ('PENDING','CONFIRMED','PROCESSING','SHIPPING','DELIVERED','CANCELLED')),
+    CONSTRAINT chk_orders_payment_method
+        CHECK (payment_method IN ('COD')),
+    CONSTRAINT chk_orders_payment_status
+        CHECK (payment_status IN ('UNPAID','PAID','FAILED','REFUNDED')),
+    CONSTRAINT chk_orders_shipping_address
+        CHECK (CHAR_LENGTH(TRIM(shipping_address)) > 0),
+    CONSTRAINT chk_orders_shipping_phone
+        CHECK (CHAR_LENGTH(TRIM(shipping_phone)) > 0),
+
+    INDEX idx_orders_user_created     (user_id, created_at, id),
+    INDEX idx_orders_status_created   (status, created_at, id)
+
+) ENGINE = InnoDB
+  DEFAULT CHARACTER SET utf8mb4
+  COLLATE utf8mb4_0900_ai_ci;
+
+
+CREATE TABLE IF NOT EXISTS order_items (
+    id              BIGINT          NOT NULL AUTO_INCREMENT,
+    order_id        BINARY(16)      NOT NULL,
+    variant_id      BINARY(16)      NOT NULL,
+    product_name    VARCHAR(255)    NOT NULL,
+    sku             VARCHAR(100)    NOT NULL,
+    size            VARCHAR(20)     NOT NULL,
+    color           VARCHAR(50)     NOT NULL,
+    quantity        INT             NOT NULL,
+    unit_price      DECIMAL(12, 2)  NOT NULL,
+    subtotal        DECIMAL(12, 2)  NOT NULL,
+
+    CONSTRAINT pk_order_items
+        PRIMARY KEY (id),
+    CONSTRAINT fk_order_items_order
+        FOREIGN KEY (order_id) REFERENCES orders (id) ON DELETE CASCADE,
+    CONSTRAINT fk_order_items_variant
+        FOREIGN KEY (variant_id) REFERENCES product_variants (id) ON DELETE RESTRICT,
+    CONSTRAINT chk_order_items_quantity
+        CHECK (quantity >= 1),
+    CONSTRAINT chk_order_items_unit_price
+        CHECK (unit_price >= 0),
+    CONSTRAINT chk_order_items_subtotal
+        CHECK (subtotal >= 0),
+
+    INDEX idx_order_items_order (order_id, id)
+
+) ENGINE = InnoDB
+  DEFAULT CHARACTER SET utf8mb4
+  COLLATE utf8mb4_0900_ai_ci;
+
+
+-- =============================================================================
+--  V8 -- Reviews
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS reviews (
+    id          BIGINT          NOT NULL AUTO_INCREMENT,
+    product_id  BINARY(16)      NOT NULL,
+    user_id     BINARY(16)      NOT NULL,
+    rating      INT             NOT NULL,
+    comment     TEXT            NULL,
+    created_at  DATETIME(6)     NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+
+    CONSTRAINT pk_reviews
+        PRIMARY KEY (id),
+    CONSTRAINT uk_reviews_product_user
+        UNIQUE (product_id, user_id),
+    CONSTRAINT fk_reviews_product
+        FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE CASCADE,
+    CONSTRAINT fk_reviews_user
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE RESTRICT,
+    CONSTRAINT chk_reviews_rating
+        CHECK (rating BETWEEN 1 AND 5),
+
+    INDEX idx_reviews_product_created (product_id, created_at, id)
+
+) ENGINE = InnoDB
+  DEFAULT CHARACTER SET utf8mb4
+  COLLATE utf8mb4_0900_ai_ci;
+
+
+-- =============================================================================
+--  Optional app user. Leave commented; local-up uses compose.local.yaml.
 -- =============================================================================
 
 -- CREATE USER IF NOT EXISTS 'lyrashop'@'%' IDENTIFIED BY 'your_password';

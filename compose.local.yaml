@@ -1,7 +1,8 @@
 name: lyrashop-local
 
 # Local MySQL only. Production compose.yaml is unchanged and does not publish
-# the database. This file is for spring-boot:run on the host.
+# the database. Pair this file with Gradle bootRun (scripts/local-up.ps1 or
+# scripts/local-up.sh) on the host.
 
 services:
   mysql:

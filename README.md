@@ -23,15 +23,12 @@ On Linux or macOS:
 ./gradlew --no-daemon clean check
 ```
 
-The verification suite starts a disposable MySQL 8.0 container. Docker must be running.
+The verification suite starts a disposable MySQL 8.0 container when Docker is
+reachable. Locally, `check` skips those Testcontainers tests if Docker Desktop
+is down. CI always runs them (`CI=true`). Force a skip with `-PskipDockerTests`.
+
 CI also runs `bash .github/scripts/test-compose-deployment.sh` to build the
 runtime image and verify the private network boundary end to end.
-
-Without Docker, compile and unit tests still run:
-
-```powershell
-.\gradlew.bat --no-daemon test -PskipDockerTests
-```
 
 ## Adding an endpoint
 
@@ -55,6 +52,10 @@ This path is for daily development: MySQL in Docker, the API on the host.
 ```powershell
 .\scripts\local-up.ps1
 ```
+
+`.\run-local.ps1` is the same command. Do not point the API at a host MySQL on
+3306 or set a per-boot JWT secret; the `dev` profile uses `127.0.0.1:3307`
+and a stable local key.
 
 On Linux or macOS:
 
@@ -84,6 +85,10 @@ curl.exe -sS -X POST http://127.0.0.1:8080/api/v1/auth/register `
 Login returns `accessToken`. Send it as `Authorization: Bearer ...` on cart, orders, and admin routes. Refresh cookies are `Secure`; use the access token for local HTTP calls.
 
 The `dev` profile is for this machine only. Production still uses `compose.yaml` with secret files and no published database port.
+
+`lyrashop_schema.sql` is a readable snapshot of Flyway V1-V8 for Workbench.
+Do not import it into the Docker MySQL used by `local-up`; the API applies
+`src/main/resources/db/migration` on startup.
 
 ## Authentication API
 

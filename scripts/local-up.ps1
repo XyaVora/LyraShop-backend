@@ -22,7 +22,7 @@ Docker is not running. Local MySQL cannot start.
 Write-Host "Starting local MySQL on 127.0.0.1:3307..."
 docker compose -f compose.local.yaml up -d --wait
 if ($LASTEXITCODE -ne 0) {
-    Fail "docker compose -f compose.local.yaml up failed. Check Docker Desktop and port 3306."
+    Fail "docker compose -f compose.local.yaml up failed. Check Docker Desktop and host port 3307."
 }
 
 $env:SPRING_PROFILES_ACTIVE = "dev"
