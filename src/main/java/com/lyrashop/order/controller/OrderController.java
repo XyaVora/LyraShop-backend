@@ -17,6 +17,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import jakarta.servlet.http.HttpServletRequest;
+
 import com.lyrashop.order.dto.CreateOrderRequest;
 import com.lyrashop.order.dto.OrderResponse;
 import com.lyrashop.order.service.OrderNotFoundException;
@@ -45,10 +47,11 @@ public class OrderController {
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<OrderResponse> create(
             Authentication authentication,
-            @Valid @RequestBody CreateOrderRequest request
+            @Valid @RequestBody CreateOrderRequest request,
+            HttpServletRequest httpRequest
     ) {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(orderService.create(userId(authentication), request));
+                .body(orderService.create(userId(authentication), request, httpRequest.getRemoteAddr()));
     }
 
     @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN')")

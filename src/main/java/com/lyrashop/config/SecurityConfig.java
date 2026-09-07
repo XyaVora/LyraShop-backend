@@ -42,7 +42,8 @@ import com.lyrashop.user.entity.UserRole;
 @EnableConfigurationProperties({
         CorsProperties.class,
         AuthProtectionProperties.class,
-        BootstrapAdminProperties.class
+        BootstrapAdminProperties.class,
+        VnpayProperties.class
 })
 public class SecurityConfig {
 
@@ -116,6 +117,8 @@ public class SecurityConfig {
                         .hasAnyRole(UserRole.CUSTOMER.name(), UserRole.ADMIN.name())
                         .requestMatchers("/api/v1/me")
                         .hasAnyRole(UserRole.CUSTOMER.name(), UserRole.ADMIN.name())
+                        .requestMatchers(HttpMethod.GET, "/api/v1/payments/vnpay/ipn", "/api/v1/payments/vnpay/return")
+                        .permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/products/{productId}/reviews")
                         .hasAnyRole(UserRole.CUSTOMER.name(), UserRole.ADMIN.name())
                         .anyRequest().denyAll()

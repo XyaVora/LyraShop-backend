@@ -2414,6 +2414,7 @@ class LyraShopApplicationTests {
                 .andExpect(jsonPath("$.status").value("PENDING"))
                 .andExpect(jsonPath("$.paymentMethod").value("COD"))
                 .andExpect(jsonPath("$.paymentStatus").value("UNPAID"))
+                .andExpect(jsonPath("$.paymentUrl").doesNotExist())
                 .andExpect(jsonPath("$.items.length()").value(1))
                 .andExpect(jsonPath("$.items[0].quantity").value(2))
                 .andReturn();
@@ -2429,6 +2430,27 @@ class LyraShopApplicationTests {
                 .andExpect(jsonPath("$.status").value("CANCELLED"));
         entityManager.clear();
         assertThat(productVariantRepository.findById(variant.getId()).orElseThrow().getStock()).isEqualTo(4);
+        mockMvc.perform(post("/api/v1/cart/items")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + customerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "variantId", variant.getId(),
+                                "quantity", 1
+                        ))))
+                .andExpect(status().isCreated());
+        mockMvc.perform(post("/api/v1/orders")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + customerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "shippingAddress", "12 Test Street",
+                                "shippingPhone", "0900000000",
+                                "paymentMethod", "VNPAY"
+                        ))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_PAYMENT_METHOD"));
+        mockMvc.perform(get("/api/v1/payments/vnpay/ipn"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.RspCode").value("97"));
     }
 
     @Test
@@ -2838,7 +2860,7 @@ class LyraShopApplicationTests {
         assertThat(MYSQL.isRunning()).isTrue();
         assertThat(jdbcTemplate.queryForObject("SELECT 1", Integer.class)).isEqualTo(1);
         assertThat(currentMigration).isNotNull();
-        assertThat(currentMigration.getVersion()).isEqualTo(MigrationVersion.fromVersion("8"));
+        assertThat(currentMigration.getVersion()).isEqualTo(MigrationVersion.fromVersion("9"));
         assertThat(currentMigration.getDescription()).isEqualTo("create reviews");
         assertThat(currentMigration.getState()).isEqualTo(MigrationState.SUCCESS);
         assertThat(flyway.validateWithResult().validationSuccessful).isTrue();
