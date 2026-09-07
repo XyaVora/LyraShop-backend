@@ -583,6 +583,7 @@ class NginxRegistrationIngressTests {
                             "${LOGOUT_",
                             "${REFRESH_",
                             "${REGISTRATION_",
+                            "${UPLOAD_",
                             "$http_cookie",
                             "$http_x_xsrf_token"
                     )
@@ -600,7 +601,10 @@ class NginxRegistrationIngressTests {
                             "client_max_body_size 8192;",
                             "client_max_body_size 4096;",
                             "client_max_body_size 1024;",
-                            "location ^~ /api/v1/admin/",
+                            "client_max_body_size 2097152;",
+                            "location ~ ^/api/v1/admin/products/[0-9a-fA-F-]+/images$",
+                            "location /api/v1/admin/",
+                            "location ^~ /api/v1/files/",
                             "location = /api/v1/cart",
                             "location ^~ /api/v1/cart/",
                             "location = /api/v1/orders",
