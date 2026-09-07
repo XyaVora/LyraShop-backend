@@ -14,10 +14,12 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.lyrashop.user.dto.AdminUserResponse;
+import com.lyrashop.user.dto.UpdateUserRoleRequest;
 import com.lyrashop.user.dto.UpdateUserStatusRequest;
 import com.lyrashop.user.entity.User;
 import com.lyrashop.user.repository.UserRepository;
 import com.lyrashop.user.service.UserNotFoundException;
+import com.lyrashop.user.service.UserRoleService;
 
 import jakarta.validation.Valid;
 
@@ -27,9 +29,11 @@ import jakarta.validation.Valid;
 public class AdminUserController {
 
     private final UserRepository users;
+    private final UserRoleService userRoleService;
 
-    public AdminUserController(UserRepository users) {
+    public AdminUserController(UserRepository users, UserRoleService userRoleService) {
         this.users = users;
+        this.userRoleService = userRoleService;
     }
 
     @PreAuthorize("hasRole('ADMIN')")
@@ -57,5 +61,20 @@ public class AdminUserController {
             user.deactivate();
         }
         return AdminUserResponse.from(users.saveAndFlush(user));
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @PutMapping(path = "/{id}/role", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    public AdminUserResponse updateRole(
+            @PathVariable String id,
+            @Valid @RequestBody UpdateUserRoleRequest request
+    ) {
+        UUID userId;
+        try {
+            userId = UUID.fromString(id);
+        } catch (IllegalArgumentException exception) {
+            throw new UserNotFoundException();
+        }
+        return AdminUserResponse.from(userRoleService.assignRole(userId, request.role()));
     }
 }

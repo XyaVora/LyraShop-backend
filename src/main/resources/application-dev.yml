@@ -6,6 +6,11 @@ spring:
     password: ${DB_PASSWORD:lyrashop_local}
 
 app:
+  bootstrap:
+    admin:
+      email: ${BOOTSTRAP_ADMIN_EMAIL:admin@lyrashop.local}
+      password: ${BOOTSTRAP_ADMIN_PASSWORD:AdminPass1234}
+      full-name: ${BOOTSTRAP_ADMIN_FULL_NAME:Local Admin}
   security:
     cors:
       allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}

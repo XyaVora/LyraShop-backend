@@ -41,6 +41,7 @@ class AuthenticationRequestBodyLimitFilterTests {
     private static final String ADMIN_ORDER_STATUS_PATH = "/api/v1/admin/orders/00000000-0000-0000-0000-000000000000/status";
     private static final String PRODUCT_REVIEWS_PATH = "/api/v1/products/00000000-0000-0000-0000-000000000000/reviews";
     private static final String ADMIN_USER_STATUS_PATH = "/api/v1/admin/users/00000000-0000-0000-0000-000000000000/status";
+    private static final String ADMIN_USER_ROLE_PATH = "/api/v1/admin/users/00000000-0000-0000-0000-000000000000/role";
     private static final int BODY_LIMIT = 16;
     private static final int BUSINESS_BODY_LIMIT = 32;
 
@@ -140,13 +141,13 @@ class AuthenticationRequestBodyLimitFilterTests {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {ADMIN_CATEGORY_PATH, ADMIN_CATEGORY_UPDATE_PATH, ADMIN_CATEGORY_DEACTIVATE_PATH, ADMIN_PRODUCT_PATH, ADMIN_PRODUCT_DEACTIVATE_PATH, ADMIN_PRODUCT_ACTIVATE_PATH, ADMIN_PRODUCT_UPDATE_PATH, ADMIN_VARIANT_UPDATE_PATH, ADMIN_VARIANT_DEACTIVATE_PATH, ADMIN_VARIANT_INVENTORY_PATH, ADMIN_PRODUCT_IMAGE_PATH, CART_ITEMS_PATH, CART_ITEM_UPDATE_PATH, ORDERS_PATH, ADMIN_ORDER_STATUS_PATH, PRODUCT_REVIEWS_PATH, ADMIN_USER_STATUS_PATH})
+    @ValueSource(strings = {ADMIN_CATEGORY_PATH, ADMIN_CATEGORY_UPDATE_PATH, ADMIN_CATEGORY_DEACTIVATE_PATH, ADMIN_PRODUCT_PATH, ADMIN_PRODUCT_DEACTIVATE_PATH, ADMIN_PRODUCT_ACTIVATE_PATH, ADMIN_PRODUCT_UPDATE_PATH, ADMIN_VARIANT_UPDATE_PATH, ADMIN_VARIANT_DEACTIVATE_PATH, ADMIN_VARIANT_INVENTORY_PATH, ADMIN_PRODUCT_IMAGE_PATH, CART_ITEMS_PATH, CART_ITEM_UPDATE_PATH, ORDERS_PATH, ADMIN_ORDER_STATUS_PATH, PRODUCT_REVIEWS_PATH, ADMIN_USER_STATUS_PATH, ADMIN_USER_ROLE_PATH})
     void appliesBusinessBodyLimitToAdminCreation(String path) throws Exception {
         byte[] body = "x".repeat(BUSINESS_BODY_LIMIT + 1).getBytes(StandardCharsets.UTF_8);
         MockHttpServletRequest request = request(body, body.length, path);
         if (ADMIN_PRODUCT_DEACTIVATE_PATH.equals(path) || ADMIN_PRODUCT_ACTIVATE_PATH.equals(path) || ADMIN_VARIANT_DEACTIVATE_PATH.equals(path) || ADMIN_VARIANT_INVENTORY_PATH.equals(path) || ADMIN_CATEGORY_DEACTIVATE_PATH.equals(path)) {
             request.setMethod("PATCH");
-        } else if (ADMIN_PRODUCT_UPDATE_PATH.equals(path) || ADMIN_VARIANT_UPDATE_PATH.equals(path) || CART_ITEM_UPDATE_PATH.equals(path) || ADMIN_ORDER_STATUS_PATH.equals(path) || ADMIN_USER_STATUS_PATH.equals(path) || ADMIN_CATEGORY_UPDATE_PATH.equals(path)) {
+        } else if (ADMIN_PRODUCT_UPDATE_PATH.equals(path) || ADMIN_VARIANT_UPDATE_PATH.equals(path) || CART_ITEM_UPDATE_PATH.equals(path) || ADMIN_ORDER_STATUS_PATH.equals(path) || ADMIN_USER_STATUS_PATH.equals(path) || ADMIN_USER_ROLE_PATH.equals(path) || ADMIN_CATEGORY_UPDATE_PATH.equals(path)) {
             request.setMethod("PUT");
         }
         MockHttpServletResponse response = new MockHttpServletResponse();

@@ -92,6 +92,19 @@ public class User {
         return new User(email, passwordHash, fullName, phone);
     }
 
+    public static User createAdmin(String email, String passwordHash, String fullName, String phone) {
+        User user = new User(email, passwordHash, fullName, phone);
+        user.role = UserRole.ADMIN;
+        return user;
+    }
+
+    public void assignRole(UserRole role) {
+        if (role == null) {
+            throw new IllegalArgumentException("role is required");
+        }
+        this.role = role;
+    }
+
     public UUID getId() {
         return id;
     }

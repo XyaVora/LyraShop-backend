@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import com.lyrashop.user.entity.User;
+import com.lyrashop.user.entity.UserRole;
 
 public interface UserRepository extends JpaRepository<User, UUID> {
 
@@ -22,4 +23,6 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     Optional<User> findActiveById(@Param("id") UUID id);
 
     boolean existsByEmail(String canonicalEmail);
+
+    long countByRole(UserRole role);
 }

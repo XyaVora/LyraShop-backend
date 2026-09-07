@@ -2179,6 +2179,51 @@ class LyraShopApplicationTests {
     }
 
     @Test
+    void promotesACustomerToAdminAndRefusesDemotingTheLastAdmin() throws Exception {
+        String adminToken = accessTokenForRole(UserRole.ADMIN);
+        User customer = userRepository.saveAndFlush(User.createCustomer(
+                "promote-" + UUID.randomUUID() + "@example.com",
+                PASSWORD_HASH,
+                "Soon Admin",
+                null
+        ));
+        mockMvc.perform(put("/api/v1/admin/users/{id}/role", customer.getId())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessTokenForRole(UserRole.CUSTOMER))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"role\":\"ADMIN\"}"))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(put("/api/v1/admin/users/{id}/role", customer.getId())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"role\":\"ADMIN\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(customer.getId().toString()))
+                .andExpect(jsonPath("$.role").value("ADMIN"));
+        mockMvc.perform(put("/api/v1/admin/users/not-a-uuid/role")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"role\":\"ADMIN\"}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("USER_NOT_FOUND"));
+        java.util.ArrayList<User> admins = new java.util.ArrayList<>(
+                userRepository.findAll().stream()
+                        .filter(user -> user.getRole() == UserRole.ADMIN)
+                        .toList()
+        );
+        User remainingAdmin = admins.remove(0);
+        for (User extra : admins) {
+            extra.assignRole(UserRole.CUSTOMER);
+            userRepository.saveAndFlush(extra);
+        }
+        mockMvc.perform(put("/api/v1/admin/users/{id}/role", remainingAdmin.getId())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"role\":\"CUSTOMER\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("LAST_ADMIN"));
+    }
+
+    @Test
     void exposesAverageRatingAndReviewCountOnPublicProductCatalog() throws Exception {
         String suffix = UUID.randomUUID().toString();
         Category category = categoryRepository.saveAndFlush(Category.create(
@@ -3125,12 +3170,8 @@ class LyraShopApplicationTests {
                 null
         ));
         if (role == UserRole.ADMIN) {
-            assertThat(jdbcTemplate.update(
-                    "UPDATE users SET role = 'ADMIN' WHERE id = ?",
-                    uuidBytes(user.getId())
-            )).isOne();
-            entityManager.clear();
-            user = userRepository.findById(user.getId()).orElseThrow();
+            user.assignRole(UserRole.ADMIN);
+            user = userRepository.saveAndFlush(user);
         }
         return accessTokenService.issue(user).value();
     }

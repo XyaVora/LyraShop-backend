@@ -26,6 +26,7 @@ import com.lyrashop.catalog.product.service.ProductVersionConflictException;
 import com.lyrashop.review.service.ReviewAlreadyExistsException;
 import com.lyrashop.review.service.ReviewNotAllowedException;
 import com.lyrashop.review.service.ReviewNotFoundException;
+import com.lyrashop.user.service.LastAdminException;
 import com.lyrashop.user.service.UserNotFoundException;
 import com.lyrashop.order.service.EmptyCartException;
 import com.lyrashop.order.service.InvalidOrderStatusException;
@@ -350,6 +351,15 @@ public class GlobalExceptionHandler {
     ) {
         return problem(HttpStatus.NOT_FOUND, ApiErrorResponse.of(
                 HttpStatus.NOT_FOUND.value(), "USER_NOT_FOUND", "User was not found",
+                request.getRequestURI()));
+    }
+
+    @ExceptionHandler(LastAdminException.class)
+    ResponseEntity<ApiErrorResponse> handleLastAdmin(LastAdminException exception, HttpServletRequest request) {
+        return problem(HttpStatus.CONFLICT, ApiErrorResponse.of(
+                HttpStatus.CONFLICT.value(),
+                "LAST_ADMIN",
+                "The last remaining admin cannot be demoted",
                 request.getRequestURI()));
     }
 
