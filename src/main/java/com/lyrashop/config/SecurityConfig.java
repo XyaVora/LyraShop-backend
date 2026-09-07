@@ -43,7 +43,8 @@ import com.lyrashop.user.entity.UserRole;
         CorsProperties.class,
         AuthProtectionProperties.class,
         BootstrapAdminProperties.class,
-        VnpayProperties.class
+        VnpayProperties.class,
+        UploadProperties.class
 })
 public class SecurityConfig {
 
@@ -108,6 +109,7 @@ public class SecurityConfig {
                                 "/api/v1/categories/*"
                         ).permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/products", "/api/v1/products/*").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/files/*").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/products/{productId}/reviews").permitAll()
                         .requestMatchers("/api/v1/admin/**")
                         .hasRole(UserRole.ADMIN.name())

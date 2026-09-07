@@ -6,6 +6,8 @@ spring:
     password: ${DB_PASSWORD:lyrashop_local}
 
 app:
+  uploads:
+    directory: ${UPLOAD_DIR:./uploads}
   bootstrap:
     admin:
       email: ${BOOTSTRAP_ADMIN_EMAIL:admin@lyrashop.local}

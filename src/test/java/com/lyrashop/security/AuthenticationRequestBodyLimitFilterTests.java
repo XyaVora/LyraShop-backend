@@ -200,6 +200,14 @@ class AuthenticationRequestBodyLimitFilterTests {
         assertBypassesFilter(publicPath);
     }
 
+    @Test
+    void skipsMultipartBodiesSoImageUploadsAreNotCappedAtTheJsonLimit() throws Exception {
+        byte[] body = "x".repeat(BUSINESS_BODY_LIMIT + 1).getBytes(StandardCharsets.UTF_8);
+        MockHttpServletRequest request = request(body, body.length, ADMIN_PRODUCT_IMAGE_PATH);
+        request.setContentType("multipart/form-data; boundary=----test");
+        assertBypassesFilter(request);
+    }
+
     private void assertPayloadTooLarge(
             MockHttpServletResponse response,
             String expectedPath

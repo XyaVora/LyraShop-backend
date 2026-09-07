@@ -3,12 +3,14 @@ package com.lyrashop;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.hamcrest.Matchers.containsStringIgnoringCase;
+import static org.hamcrest.Matchers.matchesPattern;
 import static org.hamcrest.Matchers.emptyString;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -55,6 +57,7 @@ import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
@@ -2230,6 +2233,59 @@ class LyraShopApplicationTests {
         mockMvc.perform(get("/api/v1/products").param("keyword", suffix))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].images").doesNotExist());
+    }
+
+    @Test
+    void uploadsProductImageFilesAndServesThemPublicly() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        Category category = categoryRepository.saveAndFlush(Category.create(
+                "Upload Category " + suffix, "upload-category-" + suffix, null, null
+        ));
+        Product product = productRepository.saveAndFlush(Product.create(
+                "Upload Product " + suffix, "upload-product-" + suffix, null,
+                new BigDecimal("50.00"), category.getId()
+        ));
+        String path = "/api/v1/admin/products/" + product.getId() + "/images";
+        byte[] jpeg = {(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, 0x01};
+        MockMultipartFile file = new MockMultipartFile("file", "shirt.jpg", "image/jpeg", jpeg);
+        String adminToken = accessTokenForRole(UserRole.ADMIN);
+
+        mockMvc.perform(multipart(path).file(file))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(multipart(path)
+                        .file(file)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessTokenForRole(UserRole.CUSTOMER)))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(multipart(path)
+                        .file(new MockMultipartFile("file", "note.txt", "text/plain", "hello".getBytes()))
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_PRODUCT_IMAGE"));
+
+        var created = mockMvc.perform(multipart(path)
+                        .file(file)
+                        .param("primary", "true")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.url").value(matchesPattern(
+                        "/api/v1/files/[0-9a-f-]{36}\\.jpg"
+                )))
+                .andExpect(jsonPath("$.primary").value(true))
+                .andReturn();
+        String url = objectMapper.readTree(created.getResponse().getContentAsByteArray())
+                .path("url")
+                .asText();
+
+        mockMvc.perform(get(url))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.IMAGE_JPEG))
+                .andExpect(content().bytes(jpeg));
+        mockMvc.perform(get("/api/v1/files/not-a-uuid.jpg"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_PRODUCT_IMAGE"));
+        mockMvc.perform(get("/api/v1/products/{id}", product.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.images[0].url").value(url));
     }
 
     @Test

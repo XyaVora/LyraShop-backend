@@ -72,6 +72,9 @@ class NginxRegistrationIngressTests {
     private static final String ADMIN_DASHBOARD_PATH = "/api/v1/admin/dashboard";
     private static final String PROFILE_PATH = "/api/v1/me";
     private static final String VNPAY_IPN_PATH = "/api/v1/payments/vnpay/ipn";
+    private static final String PRODUCT_FILE_PATH =
+            "/api/v1/files/00000000-0000-0000-0000-000000000000.jpg";
+    private static final int UPLOAD_MAX_REQUEST_BODY_BYTES = 2_097_152;
     private static final Network NETWORK = Network.newNetwork();
     private static final GenericContainer<?> UPSTREAM_A = upstream("a");
     private static final GenericContainer<?> UPSTREAM_B = upstream("b");
@@ -187,7 +190,7 @@ class NginxRegistrationIngressTests {
                     gateway,
                     "PATCH",
                     ADMIN_VARIANT_INVENTORY_PATH,
-                    HttpRequest.BodyPublishers.ofByteArray(new byte[8193]),
+                    HttpRequest.BodyPublishers.ofByteArray(new byte[UPLOAD_MAX_REQUEST_BODY_BYTES + 1]),
                     Map.of("Content-Type", "application/json")
             );
             assertThat(oversized.statusCode()).isEqualTo(413);
@@ -242,7 +245,7 @@ class NginxRegistrationIngressTests {
                     gateway,
                     "POST",
                     ADMIN_PRODUCT_IMAGE_PATH,
-                    HttpRequest.BodyPublishers.ofByteArray(new byte[8193]),
+                    HttpRequest.BodyPublishers.ofByteArray(new byte[UPLOAD_MAX_REQUEST_BODY_BYTES + 1]),
                     Map.of("Content-Type", "application/json")
             );
             assertThat(oversized.statusCode()).isEqualTo(413);
@@ -257,6 +260,38 @@ class NginxRegistrationIngressTests {
                     gateway,
                     "POST",
                     ADMIN_PRODUCT_IMAGE_PATH + ";scope=other",
+                    HttpRequest.BodyPublishers.noBody(),
+                    Map.of()
+            );
+
+            assertThat(valid.statusCode()).isEqualTo(200);
+            assertThat(header(valid, "X-Upstream-Id")).isIn("a", "b");
+            assertThat(trailingSlash.statusCode()).isEqualTo(404);
+            assertThat(matrixParameter.statusCode()).isEqualTo(404);
+        }
+    }
+
+    @Test
+    void proxiesAndRejectsProductFilePathVariants() throws Exception {
+        try (Gateway gateway = startGateway(Policy.highCapacity())) {
+            HttpResponse<String> valid = send(
+                    gateway,
+                    "GET",
+                    PRODUCT_FILE_PATH,
+                    HttpRequest.BodyPublishers.noBody(),
+                    Map.of()
+            );
+            HttpResponse<String> trailingSlash = send(
+                    gateway,
+                    "GET",
+                    PRODUCT_FILE_PATH + "/",
+                    HttpRequest.BodyPublishers.noBody(),
+                    Map.of()
+            );
+            HttpResponse<String> matrixParameter = send(
+                    gateway,
+                    "GET",
+                    PRODUCT_FILE_PATH + ";scope=other",
                     HttpRequest.BodyPublishers.noBody(),
                     Map.of()
             );
@@ -1057,7 +1092,7 @@ class NginxRegistrationIngressTests {
                 )
                 .withEnv(
                         "NGINX_ENVSUBST_FILTER",
-                        "^(API_|AUTH_|BACKEND_|BUSINESS_|LOGIN_|LOGOUT_|REFRESH_|REGISTRATION_)"
+                        "^(API_|AUTH_|BACKEND_|BUSINESS_|LOGIN_|LOGOUT_|REFRESH_|REGISTRATION_|UPLOAD_)"
                 )
                 .withEnv("API_SERVER_NAME", API_HOST)
                 .withEnv("BACKEND_HOST", "backend")
@@ -1065,6 +1100,7 @@ class NginxRegistrationIngressTests {
                 .withEnv("BACKEND_DNS_RESOLVER", "127.0.0.11")
                 .withEnv("AUTH_MAX_REQUEST_BODY_BYTES", "8192")
                 .withEnv("BUSINESS_MAX_REQUEST_BODY_BYTES", "8192")
+                .withEnv("UPLOAD_MAX_REQUEST_BODY_BYTES", Integer.toString(UPLOAD_MAX_REQUEST_BODY_BYTES))
                 .withEnv("REGISTRATION_CORS_ALLOWED_ORIGIN", ALLOWED_ORIGIN)
                 .withEnv("REGISTRATION_PER_IP_RATE", policy.perIpRate())
                 .withEnv("REGISTRATION_PER_IP_BURST", policy.perIpBurst())

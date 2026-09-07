@@ -23,6 +23,10 @@ spring:
     validate-on-migrate: true
     out-of-order: false
     fail-on-missing-locations: true
+  servlet:
+    multipart:
+      max-file-size: ${UPLOAD_MAX_BYTES:2097152}
+      max-request-size: ${UPLOAD_MAX_BYTES:2097152}
 
 server:
   port: ${SERVER_PORT:8080}
@@ -33,6 +37,9 @@ server:
     include-exception: false
 
 app:
+  uploads:
+    directory: ${UPLOAD_DIR:${java.io.tmpdir}/lyrashop-uploads}
+    max-bytes: ${UPLOAD_MAX_BYTES:2097152}
   vnpay:
     tmn-code: ${VNPAY_TMN_CODE:}
     hash-secret: ${VNPAY_HASH_SECRET:}

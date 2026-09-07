@@ -42,7 +42,7 @@ Keep new business routes under an existing prefix so Security and Nginx stay unt
 2. Put customer cart/order handlers under `/api/v1/cart/**` or `/api/v1/orders/**`.
    Profile stays on `/api/v1/me`.
 3. Add a MockMvc test for anonymous `401`, wrong role `403`, and the happy path.
-4. Only add a Security matcher or Nginx `location` when the path is a **new prefix** (not under `admin`, `cart`, `orders`, `me`, or `payments`).
+4. Only add a Security matcher or Nginx `location` when the path is a **new prefix** (not under `admin`, `cart`, `orders`, `me`, `payments`, or `files`).
 5. Keep auth, health, and public catalog matchers explicit. Unknown prefixes stay deny-all.
 
 Ambiguous paths (trailing slash, matrix parameters) are still rejected by the Nginx map.
@@ -123,6 +123,12 @@ create-order response then includes `paymentUrl`. VNPay calls
 `GET /api/v1/payments/vnpay/ipn` and the browser returns to
 `GET /api/v1/payments/vnpay/return`.
 
+Product images still accept an https URL. Admins can also `POST` multipart
+field `file` to `/api/v1/admin/products/{id}/images` (JPEG, PNG, or WebP, up
+to 2 MiB). The stored path is `/api/v1/files/{uuid}.{jpg|png|webp}` and
+`GET /api/v1/files/{filename}` serves it without authentication. Compose
+keeps files in the `uploads_data` volume at `/app/uploads`.
+
 Login responses contain only `accessToken`, `tokenType`, and `expiresIn`
 and are marked `no-store`. Passwords are treated as opaque input and are never
 trimmed or returned. Raw refresh tokens are never returned in JSON or stored in
@@ -167,7 +173,8 @@ curl.exe -H "Host: api.lyrashop.local" http://127.0.0.1:8080/nginx-health
 The default edge binding is `127.0.0.1:8080`. The backend runs as UID/GID
 `10001` with a read-only root filesystem, and its Actuator readiness endpoint
 is bound only to `127.0.0.1:8081` inside the backend container. MySQL data is
-stored in the `mysql_data` named volume. Keep both MySQL secret files stable
+stored in the `mysql_data` named volume. Uploaded product images are stored in
+the `uploads_data` named volume. Keep both MySQL secret files stable
 for the lifetime of that volume. Changing a file does not rotate credentials in
 an initialized database; use `ALTER USER` or deliberately reset the local
 volume. Remove the volume only when a full local database reset is intended:

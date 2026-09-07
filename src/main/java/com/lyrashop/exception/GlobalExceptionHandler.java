@@ -14,12 +14,14 @@ import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import com.lyrashop.auth.service.RefreshCookieService;
 import com.lyrashop.catalog.product.service.ProductCategoryNotFoundException;
 import com.lyrashop.catalog.product.service.ProductNotFoundException;
 import com.lyrashop.catalog.product.service.ProductQueryException;
 import com.lyrashop.catalog.product.service.ProductSlugAlreadyExistsException;
+import com.lyrashop.catalog.product.service.InvalidProductImageException;
 import com.lyrashop.catalog.product.service.InvalidProductImageUrlException;
 import com.lyrashop.catalog.product.service.ProductVersionConflictException;
 
@@ -211,6 +213,25 @@ public class GlobalExceptionHandler {
                         HttpStatus.BAD_REQUEST.value(),
                         "INVALID_PRODUCT_IMAGE_URL",
                         "Product image URL is invalid",
+                        request.getRequestURI()
+                )
+        );
+    }
+
+    @ExceptionHandler({
+            InvalidProductImageException.class,
+            MaxUploadSizeExceededException.class
+    })
+    ResponseEntity<ApiErrorResponse> handleInvalidProductImage(
+            Exception exception,
+            HttpServletRequest request
+    ) {
+        return problem(
+                HttpStatus.BAD_REQUEST,
+                ApiErrorResponse.of(
+                        HttpStatus.BAD_REQUEST.value(),
+                        "INVALID_PRODUCT_IMAGE",
+                        "Product image is invalid",
                         request.getRequestURI()
                 )
         );

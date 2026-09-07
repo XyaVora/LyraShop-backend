@@ -2,6 +2,7 @@ package com.lyrashop.catalog.product.entity;
 
 import java.net.URI;
 import java.time.Instant;
+import java.util.Locale;
 import java.util.UUID;
 
 import org.hibernate.annotations.CreationTimestamp;
@@ -99,6 +100,13 @@ public class ProductImage {
         String normalized = value.strip();
         if (normalized.isEmpty() || normalized.length() > 2048) {
             throw new IllegalArgumentException("url must be 1 to 2048 characters");
+        }
+        if (normalized.startsWith("/api/v1/files/")) {
+            String filename = normalized.substring("/api/v1/files/".length()).toLowerCase(Locale.ROOT);
+            if (!filename.matches("[0-9a-f-]{36}\\.(jpg|jpeg|png|webp)")) {
+                throw new IllegalArgumentException("url must be an https URI");
+            }
+            return "/api/v1/files/" + filename;
         }
         URI uri;
         try {

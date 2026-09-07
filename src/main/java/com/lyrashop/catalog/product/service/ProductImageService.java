@@ -6,6 +6,8 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import org.springframework.web.multipart.MultipartFile;
+
 import com.lyrashop.catalog.product.dto.CreateProductImageRequest;
 import com.lyrashop.catalog.product.entity.ProductImage;
 import com.lyrashop.catalog.product.repository.ProductImageRepository;
@@ -19,15 +21,18 @@ public class ProductImageService {
     private final ProductImageRepository images;
     private final ProductRepository products;
     private final ProductVariantRepository variants;
+    private final ProductImageStorage storage;
 
     public ProductImageService(
             ProductImageRepository images,
             ProductRepository products,
-            ProductVariantRepository variants
+            ProductVariantRepository variants,
+            ProductImageStorage storage
     ) {
         this.images = images;
         this.products = products;
         this.variants = variants;
+        this.storage = storage;
     }
 
     @Transactional
@@ -50,6 +55,22 @@ public class ProductImageService {
         }
         return images.saveAndFlush(ProductImage.create(
                 productId, variantId, url, request.primary(), request.sortOrder()
+        ));
+    }
+
+    @Transactional
+    public ProductImage createFromFile(
+            UUID productId,
+            MultipartFile file,
+            UUID variantId,
+            boolean primary,
+            int sortOrder
+    ) {
+        return create(productId, new CreateProductImageRequest(
+                storage.store(file),
+                variantId,
+                primary,
+                sortOrder
         ));
     }
 

@@ -52,6 +52,8 @@ services:
       JWT_AUDIENCE: ${JWT_AUDIENCE:-lyrashop-api}
       JWT_ACCESS_TOKEN_TTL: ${JWT_ACCESS_TOKEN_TTL:-15m}
       REFRESH_TOKEN_TTL: ${REFRESH_TOKEN_TTL:-7d}
+      UPLOAD_DIR: /app/uploads
+      UPLOAD_MAX_BYTES: ${UPLOAD_MAX_BYTES:-2097152}
     secrets:
       - source: mysql_password
         target: DB_PASSWORD
@@ -74,6 +76,8 @@ services:
       timeout: 3s
       retries: 30
       start_period: 20s
+    volumes:
+      - uploads_data:/app/uploads
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=64m,mode=1777
@@ -90,13 +94,14 @@ services:
     restart: unless-stopped
     user: "101:101"
     environment:
-      NGINX_ENVSUBST_FILTER: "^(API_|AUTH_|BACKEND_|BUSINESS_|LOGIN_|LOGOUT_|REFRESH_|REGISTRATION_)"
+      NGINX_ENVSUBST_FILTER: "^(API_|AUTH_|BACKEND_|BUSINESS_|LOGIN_|LOGOUT_|REFRESH_|REGISTRATION_|UPLOAD_)"
       API_SERVER_NAME: ${API_SERVER_NAME:-api.lyrashop.local}
       BACKEND_HOST: backend
       BACKEND_PORT: 8080
       BACKEND_DNS_RESOLVER: 127.0.0.11
       AUTH_MAX_REQUEST_BODY_BYTES: ${AUTH_MAX_REQUEST_BODY_BYTES:-8192}
       BUSINESS_MAX_REQUEST_BODY_BYTES: ${BUSINESS_MAX_REQUEST_BODY_BYTES:-8192}
+      UPLOAD_MAX_REQUEST_BODY_BYTES: ${UPLOAD_MAX_REQUEST_BODY_BYTES:-2097152}
       REGISTRATION_CORS_ALLOWED_ORIGIN: ${REGISTRATION_CORS_ALLOWED_ORIGIN:-http://localhost:5173}
       REGISTRATION_PER_IP_RATE: ${REGISTRATION_PER_IP_RATE:-5r/m}
       REGISTRATION_PER_IP_BURST: ${REGISTRATION_PER_IP_BURST:-2}
@@ -161,6 +166,7 @@ networks:
 
 volumes:
   mysql_data:
+  uploads_data:
 
 secrets:
   mysql_password:
