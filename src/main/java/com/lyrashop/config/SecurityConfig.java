@@ -114,6 +114,8 @@ public class SecurityConfig {
                         .hasAnyRole(UserRole.CUSTOMER.name(), UserRole.ADMIN.name())
                         .requestMatchers("/api/v1/orders", "/api/v1/orders/**")
                         .hasAnyRole(UserRole.CUSTOMER.name(), UserRole.ADMIN.name())
+                        .requestMatchers("/api/v1/me")
+                        .hasAnyRole(UserRole.CUSTOMER.name(), UserRole.ADMIN.name())
                         .requestMatchers(HttpMethod.POST, "/api/v1/products/{productId}/reviews")
                         .hasAnyRole(UserRole.CUSTOMER.name(), UserRole.ADMIN.name())
                         .anyRequest().denyAll()

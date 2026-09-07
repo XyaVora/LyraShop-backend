@@ -44,6 +44,7 @@ public class AuthenticationRequestBodyLimitFilter extends OncePerRequestFilter {
             PathPatternRequestMatcher.withDefaults().matcher("/api/v1/cart/**"),
             PathPatternRequestMatcher.withDefaults().matcher("/api/v1/orders"),
             PathPatternRequestMatcher.withDefaults().matcher("/api/v1/orders/**"),
+            PathPatternRequestMatcher.withDefaults().matcher("/api/v1/me"),
             PathPatternRequestMatcher.withDefaults()
                     .matcher(HttpMethod.POST, "/api/v1/products/{productId}/reviews")
     );

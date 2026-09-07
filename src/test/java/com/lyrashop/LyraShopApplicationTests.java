@@ -2179,6 +2179,42 @@ class LyraShopApplicationTests {
     }
 
     @Test
+    void returnsAndUpdatesTheSignedInCustomerProfile() throws Exception {
+        String token = accessTokenForRole(UserRole.CUSTOMER);
+        mockMvc.perform(get("/api/v1/me"))
+                .andExpect(status().isUnauthorized());
+        var profile = mockMvc.perform(get("/api/v1/me")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").exists())
+                .andExpect(jsonPath("$.fullName").value("Role Boundary"))
+                .andExpect(jsonPath("$.role").value("CUSTOMER"))
+                .andExpect(jsonPath("$.passwordHash").doesNotExist())
+                .andReturn();
+        String email = objectMapper.readTree(profile.getResponse().getContentAsByteArray())
+                .path("email")
+                .asText();
+        mockMvc.perform(put("/api/v1/me")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"fullName\":\"Updated Name\",\"phone\":\"0912345678\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.fullName").value("Updated Name"))
+                .andExpect(jsonPath("$.phone").value("0912345678"))
+                .andExpect(jsonPath("$.email").value(email));
+        mockMvc.perform(put("/api/v1/me")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"fullName\":\"\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        mockMvc.perform(get("/api/v1/me")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessTokenForRole(UserRole.ADMIN)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.role").value("ADMIN"));
+    }
+
+    @Test
     void promotesACustomerToAdminAndRefusesDemotingTheLastAdmin() throws Exception {
         String adminToken = accessTokenForRole(UserRole.ADMIN);
         User customer = userRepository.saveAndFlush(User.createCustomer(
