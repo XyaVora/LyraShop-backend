@@ -2861,7 +2861,7 @@ class LyraShopApplicationTests {
         assertThat(jdbcTemplate.queryForObject("SELECT 1", Integer.class)).isEqualTo(1);
         assertThat(currentMigration).isNotNull();
         assertThat(currentMigration.getVersion()).isEqualTo(MigrationVersion.fromVersion("9"));
-        assertThat(currentMigration.getDescription()).isEqualTo("create reviews");
+        assertThat(currentMigration.getDescription()).isEqualTo("allow vnpay payment method");
         assertThat(currentMigration.getState()).isEqualTo(MigrationState.SUCCESS);
         assertThat(flyway.validateWithResult().validationSuccessful).isTrue();
         assertThat(flyway.migrate().migrationsExecuted).isZero();
