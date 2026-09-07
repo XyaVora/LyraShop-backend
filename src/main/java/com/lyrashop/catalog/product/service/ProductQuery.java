@@ -33,8 +33,35 @@ public record ProductQuery(
             String page,
             String size
     ) {
+        return from(keyword, category, variantSize, color, minPrice, maxPrice, sort, page, size, null, null);
+    }
+
+    public static ProductQuery from(
+            String keyword,
+            String category,
+            String variantSize,
+            String color,
+            String minPrice,
+            String maxPrice,
+            String sort,
+            String page,
+            String size,
+            String clothingSize,
+            String pageSize
+    ) {
         int parsedPage = parsePage(page);
-        int parsedSize = parseSize(size);
+        Integer numericPageSize = tryParsePositiveInt(pageSize);
+        Integer numericSize = tryParsePositiveInt(size);
+        int parsedSize = numericPageSize != null
+                ? numericPageSize
+                : numericSize != null ? numericSize : DEFAULT_SIZE;
+        if (parsedSize < 1 || parsedSize > MAX_SIZE) {
+            throw new ProductQueryException();
+        }
+        String clothing = firstPresent(variantSize, clothingSize);
+        if (clothing == null && numericSize == null) {
+            clothing = size;
+        }
         BigDecimal parsedMin = parsePrice(minPrice);
         BigDecimal parsedMax = parsePrice(maxPrice);
         if (parsedMin != null && parsedMax != null && parsedMin.compareTo(parsedMax) > 0) {
@@ -45,7 +72,7 @@ public record ProductQuery(
         return new ProductQuery(
                 normalizedKeyword,
                 normalizedCategory,
-                normalizeVariantAttribute(variantSize, 20),
+                normalizeVariantAttribute(clothing, 20),
                 normalizeVariantAttribute(color, 50),
                 parsedMin,
                 parsedMax,
@@ -100,12 +127,6 @@ public record ProductQuery(
         return page;
     }
 
-    private static int parseSize(String value) {
-        int size = parseInt(value, DEFAULT_SIZE);
-        if (size < 1 || size > MAX_SIZE) throw new ProductQueryException();
-        return size;
-    }
-
     private static int parseInt(String value, int fallback) {
         if (value == null || value.isBlank()) return fallback;
         try {
@@ -113,6 +134,27 @@ public record ProductQuery(
         } catch (NumberFormatException exception) {
             throw new ProductQueryException();
         }
+    }
+
+    private static Integer tryParsePositiveInt(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return Integer.parseInt(value.strip());
+        } catch (NumberFormatException exception) {
+            return null;
+        }
+    }
+
+    private static String firstPresent(String first, String second) {
+        if (first != null && !first.isBlank()) {
+            return first;
+        }
+        if (second != null && !second.isBlank()) {
+            return second;
+        }
+        return null;
     }
 
     public record ProductSort(String property, Sort.Direction direction) {

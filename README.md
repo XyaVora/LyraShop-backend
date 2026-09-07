@@ -32,6 +32,10 @@ runtime image and verify the private network boundary end to end.
 
 ## Adding an endpoint
 
+Public product list accepts clothing size as `variantSize`, `clothingSize`, or
+a non-numeric `size` (for example `size=M`). Numeric `size` is still page size;
+use `pageSize` when both are needed.
+
 Keep new business routes under an existing prefix so Security and Nginx stay untouched:
 
 1. Put ADMIN handlers under `/api/v1/admin/**` with `@PreAuthorize("hasRole('ADMIN')")`.

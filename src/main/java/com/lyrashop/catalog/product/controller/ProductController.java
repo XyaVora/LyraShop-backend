@@ -30,15 +30,18 @@ public class ProductController {
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String category,
             @RequestParam(required = false) String variantSize,
+            @RequestParam(required = false) String clothingSize,
             @RequestParam(required = false) String color,
             @RequestParam(required = false) String minPrice,
             @RequestParam(required = false) String maxPrice,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String page,
-            @RequestParam(required = false) String size
+            @RequestParam(required = false) String size,
+            @RequestParam(required = false) String pageSize
     ) {
         ProductQuery query = ProductQuery.from(
-                keyword, category, variantSize, color, minPrice, maxPrice, sort, page, size
+                keyword, category, variantSize, color, minPrice, maxPrice, sort, page, size,
+                clothingSize, pageSize
         );
         return ProductPageResponse.from(productService.list(query));
     }
