@@ -43,6 +43,13 @@ public class ProductVariantService {
   variant.deactivate();
   variants.saveAndFlush(variant);
  }
+ @Transactional public void activate(UUID productId, UUID variantId){
+  if(!products.existsById(productId)) throw new VariantProductNotFoundException();
+  ProductVariant variant=variants.findForDeactivation(productId,variantId).orElseThrow(VariantNotFoundException::new);
+  if(variant.isActive()) return;
+  variant.activate();
+  variants.saveAndFlush(variant);
+ }
  @Transactional public ProductVariant adjustInventory(UUID productId, UUID variantId, AdjustProductVariantInventoryRequest r){
   if(!products.existsById(productId)) throw new VariantProductNotFoundException();
   ProductVariant variant=variants.findByIdAndProductId(variantId,productId).orElseThrow(VariantNotFoundException::new);

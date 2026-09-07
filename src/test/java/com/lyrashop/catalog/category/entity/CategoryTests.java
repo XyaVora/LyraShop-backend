@@ -16,5 +16,7 @@ class CategoryTests {
         assertThat(category.getDescription()).isEqualTo("New");
         assertThat(category.getParentId()).isEqualTo(3L);
         assertThat(category.isActive()).isFalse();
+        category.activate();
+        assertThat(category.isActive()).isTrue();
     }
 }

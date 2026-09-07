@@ -106,6 +106,14 @@ public class CategoryService {
         }
     }
 
+    @Transactional(readOnly = true)
+    public List<CategoryResult> listForAdmin() {
+        return categoryRepository.findAllByOrderByNameAscIdAsc()
+                .stream()
+                .map(CategoryResult::from)
+                .toList();
+    }
+
     @Transactional
     public void deactivate(@NotNull Long id) {
         Category category = categoryRepository.findById(id)
@@ -114,6 +122,17 @@ public class CategoryService {
             return;
         }
         category.deactivate();
+        categoryRepository.saveAndFlush(category);
+    }
+
+    @Transactional
+    public void activate(@NotNull Long id) {
+        Category category = categoryRepository.findById(id)
+                .orElseThrow(CategoryNotFoundException::new);
+        if (category.isActive()) {
+            return;
+        }
+        category.activate();
         categoryRepository.saveAndFlush(category);
     }
 

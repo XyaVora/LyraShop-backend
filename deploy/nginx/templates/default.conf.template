@@ -77,6 +77,8 @@ map $uri $reject_ambiguous_auth_path {
     ~^/api/v1/admin/categories/[0-9]+\; 1;
     ~^/api/v1/admin/categories/[0-9]+/deactivate/ 1;
     ~^/api/v1/admin/categories/[0-9]+/deactivate\; 1;
+    ~^/api/v1/admin/categories/[0-9]+/activate/ 1;
+    ~^/api/v1/admin/categories/[0-9]+/activate\; 1;
     ~^/api/v1/admin/users/[^/]+/role/ 1;
     ~^/api/v1/admin/users/[^/]+/role\; 1;
     ~^/api/v1/admin/users/[^/]+/status/ 1;
@@ -89,6 +91,8 @@ map $uri $reject_ambiguous_auth_path {
     ~^/api/v1/admin/products/[^/]+/activate/ 1;
     ~^/api/v1/admin/products/[^/]+/variants/[^/]+/deactivate/ 1;
     ~^/api/v1/admin/products/[^/]+/variants/[^/]+/deactivate\; 1;
+    ~^/api/v1/admin/products/[^/]+/variants/[^/]+/activate/ 1;
+    ~^/api/v1/admin/products/[^/]+/variants/[^/]+/activate\; 1;
     ~^/api/v1/admin/products/[^/]+/variants/[^/]+/inventory/ 1;
     ~^/api/v1/admin/products/[^/]+/variants/[^/]+/inventory\; 1;
     ~^/api/v1/admin/products/[^/]+/variants/[^/]+/$ 1;

@@ -21,5 +21,9 @@ class ProductVariantStockTests {
                 .isInstanceOf(IllegalArgumentException.class);
         variant.incrementStock(2);
         assertThat(variant.getStock()).isEqualTo(3);
+        variant.deactivate();
+        assertThat(variant.isActive()).isFalse();
+        variant.activate();
+        assertThat(variant.isActive()).isTrue();
     }
 }

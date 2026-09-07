@@ -11,6 +11,8 @@ public interface CategoryRepository extends JpaRepository<Category, Long> {
 
     List<Category> findAllByActiveTrueOrderByNameAscIdAsc();
 
+    List<Category> findAllByOrderByNameAscIdAsc();
+
     Optional<Category> findByIdAndActiveTrue(Long id);
 
     Optional<Category> findBySlugAndActiveTrue(String slug);
