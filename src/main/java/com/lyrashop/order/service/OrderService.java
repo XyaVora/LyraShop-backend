@@ -3,6 +3,7 @@ package com.lyrashop.order.service;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
@@ -21,9 +22,11 @@ import com.lyrashop.catalog.variant.repository.ProductVariantRepository;
 import com.lyrashop.catalog.variant.service.VariantNotFoundException;
 import com.lyrashop.order.dto.CreateOrderRequest;
 import com.lyrashop.order.dto.OrderResponse;
+import com.lyrashop.order.dto.VnpayIpnResponse;
 import com.lyrashop.order.entity.OrderItem;
 import com.lyrashop.order.entity.OrderStatus;
 import com.lyrashop.order.entity.PaymentMethod;
+import com.lyrashop.order.entity.PaymentStatus;
 import com.lyrashop.order.entity.ShopOrder;
 import com.lyrashop.order.repository.ShopOrderRepository;
 
@@ -36,6 +39,7 @@ public class OrderService {
     private final ProductVariantRepository variants;
     private final ProductRepository products;
     private final CategoryRepository categories;
+    private final VnpayService vnpay;
 
     public OrderService(
             ShopOrderRepository orders,
@@ -43,7 +47,8 @@ public class OrderService {
             CartItemRepository cartItems,
             ProductVariantRepository variants,
             ProductRepository products,
-            CategoryRepository categories
+            CategoryRepository categories,
+            VnpayService vnpay
     ) {
         this.orders = orders;
         this.carts = carts;
@@ -51,14 +56,18 @@ public class OrderService {
         this.variants = variants;
         this.products = products;
         this.categories = categories;
+        this.vnpay = vnpay;
     }
 
     @Transactional
-    public OrderResponse create(UUID userId, CreateOrderRequest request) {
+    public OrderResponse create(UUID userId, CreateOrderRequest request, String clientIp) {
         PaymentMethod paymentMethod;
         try {
             paymentMethod = PaymentMethod.valueOf(request.paymentMethod().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException exception) {
+            throw new InvalidPaymentMethodException();
+        }
+        if (paymentMethod == PaymentMethod.VNPAY && !vnpay.enabled()) {
             throw new InvalidPaymentMethodException();
         }
         Cart cart = carts.findByUserId(userId).orElseThrow(EmptyCartException::new);
@@ -104,7 +113,43 @@ public class OrderService {
         order.assignTotal(total);
         ShopOrder saved = orders.saveAndFlush(order);
         cartItems.deleteAllByCartId(cart.getId());
+        if (paymentMethod == PaymentMethod.VNPAY) {
+            return OrderResponse.from(saved, vnpay.paymentUrl(saved, clientIp));
+        }
         return OrderResponse.from(saved);
+    }
+
+    @Transactional
+    public VnpayIpnResponse confirmVnpay(Map<String, String> params) {
+        if (!vnpay.signatureMatches(params)) {
+            return VnpayIpnResponse.invalidSignature();
+        }
+        UUID orderId;
+        try {
+            orderId = VnpayService.orderId(params.get("vnp_TxnRef"));
+        } catch (OrderNotFoundException exception) {
+            return VnpayIpnResponse.orderNotFound();
+        }
+        ShopOrder order = orders.findForUpdate(orderId).orElse(null);
+        if (order == null || order.getPaymentMethod() != PaymentMethod.VNPAY) {
+            return VnpayIpnResponse.orderNotFound();
+        }
+        if (!VnpayService.vndAmount(order.getTotalAmount()).equals(params.get("vnp_Amount"))) {
+            return VnpayIpnResponse.invalidAmount();
+        }
+        if (order.getPaymentStatus() == PaymentStatus.PAID) {
+            return VnpayIpnResponse.alreadyConfirmed();
+        }
+        if (!"00".equals(params.get("vnp_ResponseCode"))) {
+            return VnpayIpnResponse.confirmSuccess();
+        }
+        try {
+            order.markPaid();
+        } catch (IllegalStateException exception) {
+            return VnpayIpnResponse.orderNotFound();
+        }
+        orders.saveAndFlush(order);
+        return VnpayIpnResponse.confirmSuccess();
     }
 
     @Transactional(readOnly = true)

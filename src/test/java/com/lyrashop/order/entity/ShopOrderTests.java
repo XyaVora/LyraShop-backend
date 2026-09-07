@@ -41,4 +41,28 @@ class ShopOrderTests {
         assertThatThrownBy(() -> progressing.transitionTo(OrderStatus.PENDING))
                 .isInstanceOf(IllegalStateException.class);
     }
+
+    @Test
+    void marksVnPayOrdersPaidUntilCancelled() {
+        ShopOrder order = ShopOrder.create(
+                UUID.randomUUID(),
+                new BigDecimal("10.00"),
+                PaymentMethod.VNPAY,
+                "12 Test Street",
+                "0900000000",
+                null
+        );
+        order.markPaid();
+        assertThat(order.getPaymentStatus()).isEqualTo(PaymentStatus.PAID);
+        ShopOrder cancelled = ShopOrder.create(
+                UUID.randomUUID(),
+                new BigDecimal("10.00"),
+                PaymentMethod.VNPAY,
+                "12 Test Street",
+                "0900000000",
+                null
+        );
+        cancelled.cancel();
+        assertThatThrownBy(cancelled::markPaid).isInstanceOf(IllegalStateException.class);
+    }
 }

@@ -71,6 +71,7 @@ class NginxRegistrationIngressTests {
     private static final String ADMIN_USER_ROLE_PATH = "/api/v1/admin/users/00000000-0000-0000-0000-000000000000/role";
     private static final String ADMIN_DASHBOARD_PATH = "/api/v1/admin/dashboard";
     private static final String PROFILE_PATH = "/api/v1/me";
+    private static final String VNPAY_IPN_PATH = "/api/v1/payments/vnpay/ipn";
     private static final Network NETWORK = Network.newNetwork();
     private static final GenericContainer<?> UPSTREAM_A = upstream("a");
     private static final GenericContainer<?> UPSTREAM_B = upstream("b");
@@ -376,6 +377,37 @@ class NginxRegistrationIngressTests {
 
             assertThat(valid.statusCode()).isEqualTo(200);
             assertThat(header(valid, "X-Upstream-Id")).isIn("a", "b");
+            assertThat(trailingSlash.statusCode()).isEqualTo(404);
+            assertThat(matrixParameter.statusCode()).isEqualTo(404);
+        }
+    }
+
+    @Test
+    void proxiesAndRejectsVnpayIpnPathVariants() throws Exception {
+        try (Gateway gateway = startGateway(Policy.highCapacity())) {
+            HttpResponse<String> valid = send(
+                    gateway,
+                    "GET",
+                    VNPAY_IPN_PATH,
+                    HttpRequest.BodyPublishers.noBody(),
+                    Map.of()
+            );
+            HttpResponse<String> trailingSlash = send(
+                    gateway,
+                    "GET",
+                    VNPAY_IPN_PATH + "/",
+                    HttpRequest.BodyPublishers.noBody(),
+                    Map.of()
+            );
+            HttpResponse<String> matrixParameter = send(
+                    gateway,
+                    "GET",
+                    VNPAY_IPN_PATH + ";scope=other",
+                    HttpRequest.BodyPublishers.noBody(),
+                    Map.of()
+            );
+
+            assertThat(valid.statusCode()).isEqualTo(200);
             assertThat(trailingSlash.statusCode()).isEqualTo(404);
             assertThat(matrixParameter.statusCode()).isEqualTo(404);
         }

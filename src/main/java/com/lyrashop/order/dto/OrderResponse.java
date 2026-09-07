@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.lyrashop.order.entity.ShopOrder;
 
 public record OrderResponse(
@@ -18,9 +19,14 @@ public record OrderResponse(
         String note,
         Instant createdAt,
         Instant updatedAt,
-        List<OrderItemResponse> items
+        List<OrderItemResponse> items,
+        @JsonInclude(JsonInclude.Include.NON_NULL) String paymentUrl
 ) {
     public static OrderResponse from(ShopOrder order) {
+        return from(order, null);
+    }
+
+    public static OrderResponse from(ShopOrder order, String paymentUrl) {
         return new OrderResponse(
                 order.getId(),
                 order.getTotalAmount(),
@@ -32,7 +38,8 @@ public record OrderResponse(
                 order.getNote(),
                 order.getCreatedAt(),
                 order.getUpdatedAt(),
-                order.getItems().stream().map(OrderItemResponse::from).toList()
+                order.getItems().stream().map(OrderItemResponse::from).toList(),
+                paymentUrl
         );
     }
 }

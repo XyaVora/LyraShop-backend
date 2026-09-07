@@ -320,7 +320,7 @@ CREATE TABLE IF NOT EXISTS orders (
     CONSTRAINT chk_orders_status
         CHECK (status IN ('PENDING','CONFIRMED','PROCESSING','SHIPPING','DELIVERED','CANCELLED')),
     CONSTRAINT chk_orders_payment_method
-        CHECK (payment_method IN ('COD')),
+        CHECK (payment_method IN ('COD', 'VNPAY')),
     CONSTRAINT chk_orders_payment_status
         CHECK (payment_status IN ('UNPAID','PAID','FAILED','REFUNDED')),
     CONSTRAINT chk_orders_shipping_address

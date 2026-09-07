@@ -141,6 +141,13 @@ public class ShopOrder {
         }
     }
 
+    public void markPaid() {
+        if (status == OrderStatus.CANCELLED) {
+            throw new IllegalStateException("cancelled orders cannot be paid");
+        }
+        paymentStatus = PaymentStatus.PAID;
+    }
+
     public UUID getId() { return id; }
     public UUID getUserId() { return userId; }
     public BigDecimal getTotalAmount() { return totalAmount; }
