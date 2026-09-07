@@ -105,6 +105,11 @@ public class User {
         this.role = role;
     }
 
+    public void updateProfile(String fullName, String phone) {
+        this.fullName = requireText(fullName, "fullName", 255);
+        this.phone = normalizeNullable(phone, "phone", 20);
+    }
+
     public UUID getId() {
         return id;
     }

@@ -26,6 +26,7 @@ import com.lyrashop.catalog.product.service.ProductVersionConflictException;
 import com.lyrashop.review.service.ReviewAlreadyExistsException;
 import com.lyrashop.review.service.ReviewNotAllowedException;
 import com.lyrashop.review.service.ReviewNotFoundException;
+import com.lyrashop.user.service.InvalidProfileDataException;
 import com.lyrashop.user.service.LastAdminException;
 import com.lyrashop.user.service.UserNotFoundException;
 import com.lyrashop.order.service.EmptyCartException;
@@ -352,6 +353,23 @@ public class GlobalExceptionHandler {
         return problem(HttpStatus.NOT_FOUND, ApiErrorResponse.of(
                 HttpStatus.NOT_FOUND.value(), "USER_NOT_FOUND", "User was not found",
                 request.getRequestURI()));
+    }
+
+    @ExceptionHandler(InvalidProfileDataException.class)
+    ResponseEntity<ApiErrorResponse> handleInvalidProfile(
+            InvalidProfileDataException exception,
+            HttpServletRequest request
+    ) {
+        return problem(
+                HttpStatus.BAD_REQUEST,
+                ApiErrorResponse.withFieldErrors(
+                        HttpStatus.BAD_REQUEST.value(),
+                        "VALIDATION_FAILED",
+                        "Request validation failed",
+                        request.getRequestURI(),
+                        Map.of("fullName", "must be valid")
+                )
+        );
     }
 
     @ExceptionHandler(LastAdminException.class)

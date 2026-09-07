@@ -36,8 +36,9 @@ Keep new business routes under an existing prefix so Security and Nginx stay unt
 
 1. Put ADMIN handlers under `/api/v1/admin/**` with `@PreAuthorize("hasRole('ADMIN')")`.
 2. Put customer cart/order handlers under `/api/v1/cart/**` or `/api/v1/orders/**`.
+   Profile stays on `/api/v1/me`.
 3. Add a MockMvc test for anonymous `401`, wrong role `403`, and the happy path.
-4. Only add a Security matcher or Nginx `location` when the path is a **new prefix** (not under `admin`, `cart`, or `orders`).
+4. Only add a Security matcher or Nginx `location` when the path is a **new prefix** (not under `admin`, `cart`, `orders`, or `me`).
 5. Keep auth, health, and public catalog matchers explicit. Unknown prefixes stay deny-all.
 
 Ambiguous paths (trailing slash, matrix parameters) are still rejected by the Nginx map.
@@ -109,6 +110,8 @@ Do not import it into the Docker MySQL used by `local-up`; the API applies
   access token.
 - `POST /api/v1/auth/logout` requires the bearer access token, revokes the
   current refresh-token family, and clears the authentication cookies.
+- `GET /api/v1/me` returns the signed-in account. `PUT /api/v1/me` updates
+  `fullName` and `phone`. Email cannot be changed.
 
 Login responses contain only `accessToken`, `tokenType`, and `expiresIn`
 and are marked `no-store`. Passwords are treated as opaque input and are never
