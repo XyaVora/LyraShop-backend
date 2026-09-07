@@ -125,7 +125,8 @@ create-order response then includes `paymentUrl`. VNPay calls
 
 Product images still accept an https URL. Admins can also `POST` multipart
 field `file` to `/api/v1/admin/products/{id}/images` (JPEG, PNG, or WebP, up
-to 2 MiB). The stored path is `/api/v1/files/{uuid}.{jpg|png|webp}` and
+to 2 MiB). Nginx allows that image path a 2 MiB body; other admin JSON stays
+at 8 KB. The stored path is `/api/v1/files/{uuid}.{jpg|png|webp}` and
 `GET /api/v1/files/{filename}` serves it without authentication. Compose
 keeps files in the `uploads_data` volume at `/app/uploads`.
 

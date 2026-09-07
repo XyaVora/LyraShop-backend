@@ -190,7 +190,7 @@ class NginxRegistrationIngressTests {
                     gateway,
                     "PATCH",
                     ADMIN_VARIANT_INVENTORY_PATH,
-                    HttpRequest.BodyPublishers.ofByteArray(new byte[UPLOAD_MAX_REQUEST_BODY_BYTES + 1]),
+                    HttpRequest.BodyPublishers.ofByteArray(new byte[8193]),
                     Map.of("Content-Type", "application/json")
             );
             assertThat(oversized.statusCode()).isEqualTo(413);
