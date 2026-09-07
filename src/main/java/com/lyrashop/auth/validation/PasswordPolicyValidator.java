@@ -5,7 +5,7 @@ import jakarta.validation.ConstraintValidatorContext;
 
 public class PasswordPolicyValidator implements ConstraintValidator<ValidPassword, String> {
 
-    static final int MIN_CODE_POINTS = 12;
+    public static final int MIN_CODE_POINTS = 12;
 
     @Override
     public boolean isValid(String value, ConstraintValidatorContext context) {

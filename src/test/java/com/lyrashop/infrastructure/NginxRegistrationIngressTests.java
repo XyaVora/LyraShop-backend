@@ -66,6 +66,7 @@ class NginxRegistrationIngressTests {
     private static final String ADMIN_PRODUCT_IMAGE_PATH = "/api/v1/admin/products/00000000-0000-0000-0000-000000000000/images";
     private static final String ADMIN_CATEGORY_UPDATE_PATH = "/api/v1/admin/categories/12";
     private static final String ADMIN_CATEGORY_DEACTIVATE_PATH = "/api/v1/admin/categories/12/deactivate";
+    private static final String ADMIN_USER_ROLE_PATH = "/api/v1/admin/users/00000000-0000-0000-0000-000000000000/role";
     private static final String ADMIN_DASHBOARD_PATH = "/api/v1/admin/dashboard";
     private static final Network NETWORK = Network.newNetwork();
     private static final GenericContainer<?> UPSTREAM_A = upstream("a");
@@ -308,6 +309,38 @@ class NginxRegistrationIngressTests {
             assertThat(deactivated.statusCode()).isEqualTo(200);
             assertThat(header(updated, "X-Upstream-Id")).isIn("a", "b");
             assertThat(oversized.statusCode()).isEqualTo(413);
+            assertThat(trailingSlash.statusCode()).isEqualTo(404);
+            assertThat(matrixParameter.statusCode()).isEqualTo(404);
+        }
+    }
+
+    @Test
+    void proxiesAndRejectsAdminUserRolePathVariants() throws Exception {
+        try (Gateway gateway = startGateway(Policy.highCapacity())) {
+            HttpResponse<String> valid = send(
+                    gateway,
+                    "PUT",
+                    ADMIN_USER_ROLE_PATH,
+                    HttpRequest.BodyPublishers.ofString("{\"role\":\"ADMIN\"}"),
+                    Map.of("Content-Type", "application/json")
+            );
+            HttpResponse<String> trailingSlash = send(
+                    gateway,
+                    "PUT",
+                    ADMIN_USER_ROLE_PATH + "/",
+                    HttpRequest.BodyPublishers.noBody(),
+                    Map.of()
+            );
+            HttpResponse<String> matrixParameter = send(
+                    gateway,
+                    "PUT",
+                    ADMIN_USER_ROLE_PATH + ";scope=other",
+                    HttpRequest.BodyPublishers.noBody(),
+                    Map.of()
+            );
+
+            assertThat(valid.statusCode()).isEqualTo(200);
+            assertThat(header(valid, "X-Upstream-Id")).isIn("a", "b");
             assertThat(trailingSlash.statusCode()).isEqualTo(404);
             assertThat(matrixParameter.statusCode()).isEqualTo(404);
         }

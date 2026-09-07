@@ -39,7 +39,11 @@ import com.lyrashop.user.entity.UserRole;
 
 @Configuration
 @EnableMethodSecurity
-@EnableConfigurationProperties({CorsProperties.class, AuthProtectionProperties.class})
+@EnableConfigurationProperties({
+        CorsProperties.class,
+        AuthProtectionProperties.class,
+        BootstrapAdminProperties.class
+})
 public class SecurityConfig {
 
     private static final String BCRYPT_ID = "bcrypt";

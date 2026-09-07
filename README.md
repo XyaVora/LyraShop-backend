@@ -84,7 +84,16 @@ curl.exe -sS -X POST http://127.0.0.1:8080/api/v1/auth/register `
 
 Login returns `accessToken`. Send it as `Authorization: Bearer ...` on cart, orders, and admin routes. Refresh cookies are `Secure`; use the access token for local HTTP calls.
 
+Local admin (after the first `dev` boot): `admin@lyrashop.local` / `AdminPass1234`.
+
 The `dev` profile is for this machine only. Production still uses `compose.yaml` with secret files and no published database port.
+
+On first `dev` boot with no ADMIN row, the API creates `admin@lyrashop.local` /
+`AdminPass1234` (override with `BOOTSTRAP_ADMIN_EMAIL` and
+`BOOTSTRAP_ADMIN_PASSWORD`). Production leaves those empty unless you set the
+same variables. An existing admin can also `PUT /api/v1/admin/users/{id}/role`
+with `{"role":"ADMIN"}` or `{"role":"CUSTOMER"}`. The last remaining admin
+cannot be demoted.
 
 `lyrashop_schema.sql` is a readable snapshot of Flyway V1-V8 for Workbench.
 Do not import it into the Docker MySQL used by `local-up`; the API applies
