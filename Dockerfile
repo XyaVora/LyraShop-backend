@@ -19,6 +19,7 @@ RUN addgroup -S -g 10001 lyrashop \
 WORKDIR /app
 
 COPY --from=build --chown=10001:10001 /workspace/app.jar /app/app.jar
+RUN mkdir -p /app/uploads && chown 10001:10001 /app/uploads
 
 USER 10001:10001
 

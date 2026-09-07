@@ -65,6 +65,10 @@ public class AuthenticationRequestBodyLimitFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
+        String contentType = request.getContentType();
+        if (contentType != null && contentType.toLowerCase().startsWith("multipart/")) {
+            return true;
+        }
         return !AUTHENTICATION_REQUEST.matches(request)
                 && !BUSINESS_REQUEST.matches(request);
     }

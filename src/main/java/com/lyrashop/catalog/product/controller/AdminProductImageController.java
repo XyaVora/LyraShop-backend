@@ -11,7 +11,10 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.lyrashop.catalog.product.dto.CreateProductImageRequest;
 import com.lyrashop.catalog.product.dto.ProductImageResponse;
@@ -45,5 +48,26 @@ public class AdminProductImageController {
         }
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ProductImageResponse.from(productImageService.create(productUuid, request)));
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<ProductImageResponse> upload(
+            @PathVariable String productId,
+            @RequestPart("file") MultipartFile file,
+            @RequestParam(required = false) UUID variantId,
+            @RequestParam(defaultValue = "false") boolean primary,
+            @RequestParam(defaultValue = "0") int sortOrder
+    ) {
+        UUID productUuid;
+        try {
+            productUuid = UUID.fromString(productId);
+        } catch (IllegalArgumentException exception) {
+            throw new ProductNotFoundException();
+        }
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ProductImageResponse.from(
+                        productImageService.createFromFile(productUuid, file, variantId, primary, sortOrder)
+                ));
     }
 }
