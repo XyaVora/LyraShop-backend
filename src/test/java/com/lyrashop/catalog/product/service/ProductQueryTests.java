@@ -31,6 +31,37 @@ class ProductQueryTests {
     }
 
     @Test
+    void treatsNonNumericSizeAsClothingSizeForGoalClients() {
+        ProductQuery query = ProductQuery.from(
+                null, null, null, null, null, null, null, "0", "M", null, null
+        );
+
+        assertThat(query.variantSize()).isEqualTo("m");
+        assertThat(query.size()).isEqualTo(ProductQuery.DEFAULT_SIZE);
+    }
+
+    @Test
+    void prefersExplicitPageSizeAndClothingSizeAliases() {
+        ProductQuery query = ProductQuery.from(
+                null, null, null, null, null, null, null, "1", "M", "L", "10"
+        );
+
+        assertThat(query.variantSize()).isEqualTo("l");
+        assertThat(query.size()).isEqualTo(10);
+        assertThat(query.page()).isEqualTo(1);
+    }
+
+    @Test
+    void keepsNumericSizeAsPageSize() {
+        ProductQuery query = ProductQuery.from(
+                null, null, "XL", null, null, null, null, null, "15"
+        );
+
+        assertThat(query.variantSize()).isEqualTo("xl");
+        assertThat(query.size()).isEqualTo(15);
+    }
+
+    @Test
     void rejectsOversizedVariantFilters() {
         assertThatThrownBy(() -> ProductQuery.from(
                 null, null, "m".repeat(21), null, null, null, null, null, null
