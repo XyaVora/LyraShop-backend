@@ -116,6 +116,10 @@ public class ProductVariant {
         this.active = false;
     }
 
+    public void activate() {
+        this.active = true;
+    }
+
     public UUID getId() { return id; }
     public UUID getProductId() { return productId; }
     public String getSku() { return sku; }

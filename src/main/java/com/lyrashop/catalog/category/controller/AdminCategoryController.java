@@ -1,10 +1,13 @@
 package com.lyrashop.catalog.category.controller;
 
+import java.util.List;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -13,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.lyrashop.catalog.category.dto.AdminCategoryResponse;
 import com.lyrashop.catalog.category.dto.CategoryResponse;
 import com.lyrashop.catalog.category.dto.CreateCategoryRequest;
 import com.lyrashop.catalog.category.dto.UpdateCategoryRequest;
@@ -30,6 +34,12 @@ public class AdminCategoryController {
 
     public AdminCategoryController(CategoryService categoryService) {
         this.categoryService = categoryService;
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
+    public List<AdminCategoryResponse> list() {
+        return categoryService.listForAdmin().stream().map(AdminCategoryResponse::from).toList();
     }
 
     @PreAuthorize("hasRole('ADMIN')")
@@ -61,6 +71,13 @@ public class AdminCategoryController {
     @PatchMapping(path = "/{id}/deactivate")
     public ResponseEntity<Void> deactivate(@PathVariable String id) {
         categoryService.deactivate(categoryId(id));
+        return ResponseEntity.noContent().build();
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @PatchMapping(path = "/{id}/activate")
+    public ResponseEntity<Void> activate(@PathVariable String id) {
+        categoryService.activate(categoryId(id));
         return ResponseEntity.noContent().build();
     }
 

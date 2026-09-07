@@ -66,6 +66,8 @@ class NginxRegistrationIngressTests {
     private static final String ADMIN_PRODUCT_IMAGE_PATH = "/api/v1/admin/products/00000000-0000-0000-0000-000000000000/images";
     private static final String ADMIN_CATEGORY_UPDATE_PATH = "/api/v1/admin/categories/12";
     private static final String ADMIN_CATEGORY_DEACTIVATE_PATH = "/api/v1/admin/categories/12/deactivate";
+    private static final String ADMIN_CATEGORY_ACTIVATE_PATH = "/api/v1/admin/categories/12/activate";
+    private static final String ADMIN_VARIANT_ACTIVATE_PATH = "/api/v1/admin/products/00000000-0000-0000-0000-000000000000/variants/11111111-1111-1111-1111-111111111111/activate";
     private static final String ADMIN_USER_ROLE_PATH = "/api/v1/admin/users/00000000-0000-0000-0000-000000000000/role";
     private static final String ADMIN_DASHBOARD_PATH = "/api/v1/admin/dashboard";
     private static final String PROFILE_PATH = "/api/v1/me";
@@ -284,6 +286,20 @@ class NginxRegistrationIngressTests {
                     HttpRequest.BodyPublishers.noBody(),
                     Map.of()
             );
+            HttpResponse<String> activated = send(
+                    gateway,
+                    "PATCH",
+                    ADMIN_CATEGORY_ACTIVATE_PATH,
+                    HttpRequest.BodyPublishers.noBody(),
+                    Map.of()
+            );
+            HttpResponse<String> variantActivated = send(
+                    gateway,
+                    "PATCH",
+                    ADMIN_VARIANT_ACTIVATE_PATH,
+                    HttpRequest.BodyPublishers.noBody(),
+                    Map.of()
+            );
             HttpResponse<String> oversized = send(
                     gateway,
                     "PUT",
@@ -298,6 +314,20 @@ class NginxRegistrationIngressTests {
                     HttpRequest.BodyPublishers.noBody(),
                     Map.of()
             );
+            HttpResponse<String> activateTrailingSlash = send(
+                    gateway,
+                    "PATCH",
+                    ADMIN_CATEGORY_ACTIVATE_PATH + "/",
+                    HttpRequest.BodyPublishers.noBody(),
+                    Map.of()
+            );
+            HttpResponse<String> variantActivateTrailingSlash = send(
+                    gateway,
+                    "PATCH",
+                    ADMIN_VARIANT_ACTIVATE_PATH + "/",
+                    HttpRequest.BodyPublishers.noBody(),
+                    Map.of()
+            );
             HttpResponse<String> matrixParameter = send(
                     gateway,
                     "PUT",
@@ -308,9 +338,13 @@ class NginxRegistrationIngressTests {
 
             assertThat(updated.statusCode()).isEqualTo(200);
             assertThat(deactivated.statusCode()).isEqualTo(200);
+            assertThat(activated.statusCode()).isEqualTo(200);
+            assertThat(variantActivated.statusCode()).isEqualTo(200);
             assertThat(header(updated, "X-Upstream-Id")).isIn("a", "b");
             assertThat(oversized.statusCode()).isEqualTo(413);
             assertThat(trailingSlash.statusCode()).isEqualTo(404);
+            assertThat(activateTrailingSlash.statusCode()).isEqualTo(404);
+            assertThat(variantActivateTrailingSlash.statusCode()).isEqualTo(404);
             assertThat(matrixParameter.statusCode()).isEqualTo(404);
         }
     }

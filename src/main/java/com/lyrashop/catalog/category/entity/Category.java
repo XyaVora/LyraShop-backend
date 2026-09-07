@@ -106,6 +106,10 @@ public class Category {
         active = false;
     }
 
+    public void activate() {
+        active = true;
+    }
+
     public Instant getCreatedAt() {
         return createdAt;
     }

@@ -1139,6 +1139,41 @@ class LyraShopApplicationTests {
     }
 
     @Test
+    void listsInactiveCategoriesForAdminsAndActivatesThem() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        Category hidden = categoryRepository.saveAndFlush(Category.create(
+                "Hidden Admin Category " + suffix, "hidden-admin-category-" + suffix, null, null
+        ));
+        hidden.deactivate();
+        hidden = categoryRepository.saveAndFlush(hidden);
+        String adminToken = accessTokenForRole(UserRole.ADMIN);
+
+        mockMvc.perform(get("/api/v1/admin/categories"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/v1/admin/categories")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessTokenForRole(UserRole.CUSTOMER)))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/v1/admin/categories")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.id==" + hidden.getId() + ")].active").value(false));
+        mockMvc.perform(patch("/api/v1/admin/categories/{id}/activate", hidden.getId())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isNoContent());
+        entityManager.clear();
+        assertThat(categoryRepository.findById(hidden.getId()).orElseThrow().isActive()).isTrue();
+        mockMvc.perform(get("/api/v1/categories/{id}", hidden.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(hidden.getId()));
+        mockMvc.perform(patch("/api/v1/admin/categories/{id}/activate", hidden.getId())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isNoContent());
+        mockMvc.perform(patch("/api/v1/admin/categories/not-a-number/activate")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
     void mapsConcurrentCategorySlugRaceToOneCreatedAndOneConflict() throws Exception {
         String suffix = UUID.randomUUID().toString();
         String slug = "concurrent-category-" + suffix;
@@ -1617,6 +1652,52 @@ class LyraShopApplicationTests {
         assertThat(stillDeactivated.isActive()).isFalse();
         assertThat(stillDeactivated.getVersion()).isEqualTo(1L);
         assertThat(stillDeactivated.getUpdatedAt()).isEqualTo(deactivatedAt);
+    }
+
+    @Test
+    void activatesDeactivatedVariantsForAdminsAndShowsThemPublicly() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        Category category = categoryRepository.saveAndFlush(Category.create(
+                "Variant Activate Category " + suffix,
+                "variant-activate-category-" + suffix,
+                null,
+                null
+        ));
+        Product product = productRepository.saveAndFlush(Product.create(
+                "Variant Activate Product " + suffix,
+                "variant-activate-product-" + suffix,
+                null,
+                new BigDecimal("50.00"),
+                category.getId()
+        ));
+        ProductVariant variant = productVariantRepository.saveAndFlush(ProductVariant.create(
+                product.getId(), "ACTIVATE-" + suffix, "M", "Black", new BigDecimal("55.00"), 4
+        ));
+        variant.deactivate();
+        productVariantRepository.saveAndFlush(variant);
+        String path = "/api/v1/admin/products/" + product.getId()
+                + "/variants/" + variant.getId() + "/activate";
+        String adminToken = accessTokenForRole(UserRole.ADMIN);
+
+        mockMvc.perform(patch(path))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(patch(path)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessTokenForRole(UserRole.CUSTOMER)))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/v1/products/{id}", product.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.variants").isEmpty());
+        mockMvc.perform(patch(path)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isNoContent());
+        entityManager.clear();
+        assertThat(productVariantRepository.findById(variant.getId()).orElseThrow().isActive()).isTrue();
+        mockMvc.perform(get("/api/v1/products/{id}", product.getId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.variants[0].id").value(variant.getId().toString()));
+        mockMvc.perform(patch(path)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isNoContent());
     }
 
     @Test
