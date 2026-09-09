@@ -2,11 +2,14 @@ package com.lyrashop.catalog.product.dto;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 import com.lyrashop.catalog.product.entity.Product;
+import com.lyrashop.catalog.product.entity.ProductImage;
+import com.lyrashop.catalog.variant.entity.ProductVariant;
 
-public record AdminProductResponse(
+public record AdminProductDetailResponse(
         UUID id,
         String name,
         String slug,
@@ -16,11 +19,17 @@ public record AdminProductResponse(
         boolean active,
         long version,
         Instant createdAt,
-        Instant updatedAt
+        Instant updatedAt,
+        List<AdminProductVariantResponse> variants,
+        List<ProductImageResponse> images
 ) {
 
-    public static AdminProductResponse from(Product product) {
-        return new AdminProductResponse(
+    public static AdminProductDetailResponse from(
+            Product product,
+            List<ProductVariant> variants,
+            List<ProductImage> images
+    ) {
+        return new AdminProductDetailResponse(
                 product.getId(),
                 product.getName(),
                 product.getSlug(),
@@ -30,7 +39,9 @@ public record AdminProductResponse(
                 product.isActive(),
                 product.getVersion(),
                 product.getCreatedAt(),
-                product.getUpdatedAt()
+                product.getUpdatedAt(),
+                variants.stream().map(AdminProductVariantResponse::from).toList(),
+                images.stream().map(ProductImageResponse::from).toList()
         );
     }
 }

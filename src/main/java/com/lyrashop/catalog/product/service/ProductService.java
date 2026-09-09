@@ -24,6 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.lyrashop.catalog.category.entity.Category;
 import com.lyrashop.catalog.category.repository.CategoryRepository;
+import com.lyrashop.catalog.product.dto.AdminProductDetailResponse;
 import com.lyrashop.catalog.product.dto.AdminProductResponse;
 import com.lyrashop.catalog.product.dto.CreateProductRequest;
 import com.lyrashop.catalog.product.dto.UpdateProductRequest;
@@ -132,6 +133,17 @@ public class ProductService {
         return productRepository.findAllByOrderByCreatedAtDescIdDesc().stream()
                 .map(AdminProductResponse::from)
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public AdminProductDetailResponse getForAdmin(UUID id) {
+        Product product = productRepository.findById(id)
+                .orElseThrow(ProductNotFoundException::new);
+        return AdminProductDetailResponse.from(
+                product,
+                productVariantService.listForAdmin(id),
+                productImageService.listForProduct(id)
+        );
     }
 
     @Transactional(readOnly = true)

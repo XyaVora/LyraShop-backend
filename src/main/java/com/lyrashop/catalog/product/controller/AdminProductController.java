@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.lyrashop.catalog.product.dto.AdminProductDetailResponse;
 import com.lyrashop.catalog.product.dto.AdminProductResponse;
 import com.lyrashop.catalog.product.dto.CreateProductRequest;
 import com.lyrashop.catalog.product.dto.ProductResponse;
@@ -41,6 +42,16 @@ public class AdminProductController {
     @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
     public List<AdminProductResponse> list() {
         return productService.listForAdmin();
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @GetMapping(path = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
+    public AdminProductDetailResponse get(@PathVariable String id) {
+        try {
+            return productService.getForAdmin(UUID.fromString(id));
+        } catch (IllegalArgumentException exception) {
+            throw new ProductNotFoundException();
+        }
     }
 
     @PreAuthorize("hasRole('ADMIN')")
