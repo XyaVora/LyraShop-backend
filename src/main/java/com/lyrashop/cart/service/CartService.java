@@ -139,11 +139,14 @@ public class CartService {
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         for (CartItem item : cartItems) {
             ProductVariant variant = variants.findById(item.getVariantId()).orElseThrow(VariantNotFoundException::new);
+            Product product = products.findById(variant.getProductId()).orElse(null);
             BigDecimal subtotal = variant.getPrice().multiply(BigDecimal.valueOf(item.getQuantity()));
             total = total.add(subtotal);
             responses.add(new CartItemResponse(
                     item.getId(),
                     variant.getId(),
+                    variant.getProductId(),
+                    product == null ? variant.getSku() : product.getName(),
                     variant.getSku(),
                     variant.getSize(),
                     variant.getColor(),
