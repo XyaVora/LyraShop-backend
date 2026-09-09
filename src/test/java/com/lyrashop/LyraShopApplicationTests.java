@@ -2049,6 +2049,7 @@ class LyraShopApplicationTests {
                 .findFirst()
                 .orElseThrow();
         assertThat(activeRow.path("active").asBoolean()).isTrue();
+        assertThat(activeRow.path("version").asLong()).isEqualTo(active.getVersion());
         assertThat(hiddenRow.path("active").asBoolean()).isFalse();
         assertThat(hiddenRow.path("name").asText()).isEqualTo("Admin List Hidden " + suffix);
         mockMvc.perform(get("/api/v1/products").param("keyword", suffix))
@@ -2056,6 +2057,59 @@ class LyraShopApplicationTests {
                 .andExpect(jsonPath("$.content.length()").value(1))
                 .andExpect(jsonPath("$.content[0].id").value(active.getId().toString()))
                 .andExpect(jsonPath("$.content[0].active").doesNotExist());
+    }
+
+    @Test
+    void returnsAdminProductDetailWithHiddenVariantsAndVersion() throws Exception {
+        String suffix = UUID.randomUUID().toString();
+        Category category = categoryRepository.saveAndFlush(Category.create(
+                "Admin Detail Category " + suffix,
+                "admin-detail-category-" + suffix,
+                null,
+                null
+        ));
+        Product product = productRepository.saveAndFlush(Product.create(
+                "Admin Detail Product " + suffix,
+                "admin-detail-product-" + suffix,
+                "Hidden catalog still readable",
+                new BigDecimal("33.00"),
+                category.getId()
+        ));
+        product.deactivate();
+        productRepository.saveAndFlush(product);
+        ProductVariant activeVariant = productVariantRepository.saveAndFlush(ProductVariant.create(
+                product.getId(), "DET-A-" + suffix, "M", "Black", new BigDecimal("34.00"), 4
+        ));
+        ProductVariant hiddenVariant = productVariantRepository.saveAndFlush(ProductVariant.create(
+                product.getId(), "DET-H-" + suffix, "L", "White", new BigDecimal("35.00"), 2
+        ));
+        hiddenVariant.deactivate();
+        productVariantRepository.saveAndFlush(hiddenVariant);
+
+        mockMvc.perform(get("/api/v1/admin/products/{id}", product.getId()))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/v1/admin/products/{id}", product.getId())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessTokenForRole(UserRole.CUSTOMER)))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/api/v1/admin/products/{id}", product.getId())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessTokenForRole(UserRole.ADMIN)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(product.getId().toString()))
+                .andExpect(jsonPath("$.active").value(false))
+                .andExpect(jsonPath("$.version").value((int) product.getVersion()))
+                .andExpect(jsonPath("$.variants.length()").value(2))
+                .andExpect(jsonPath("$.variants[0].sku").value(activeVariant.getSku()))
+                .andExpect(jsonPath("$.variants[0].active").value(true))
+                .andExpect(jsonPath("$.variants[0].version").isNumber())
+                .andExpect(jsonPath("$.variants[1].sku").value(hiddenVariant.getSku()))
+                .andExpect(jsonPath("$.variants[1].active").value(false));
+        mockMvc.perform(get("/api/v1/admin/products/not-a-uuid")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessTokenForRole(UserRole.ADMIN)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("PRODUCT_NOT_FOUND"));
+        mockMvc.perform(get("/api/v1/products/{id}", product.getId()))
+                .andExpect(status().isNotFound());
     }
 
     @Test
