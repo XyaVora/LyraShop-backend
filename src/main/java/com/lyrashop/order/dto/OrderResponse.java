@@ -10,6 +10,7 @@ import com.lyrashop.order.entity.ShopOrder;
 
 public record OrderResponse(
         UUID id,
+        UUID userId,
         BigDecimal totalAmount,
         String status,
         String paymentMethod,
@@ -29,6 +30,7 @@ public record OrderResponse(
     public static OrderResponse from(ShopOrder order, String paymentUrl) {
         return new OrderResponse(
                 order.getId(),
+                order.getUserId(),
                 order.getTotalAmount(),
                 order.getStatus().name(),
                 order.getPaymentMethod().name(),

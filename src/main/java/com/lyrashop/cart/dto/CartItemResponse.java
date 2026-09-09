@@ -6,6 +6,8 @@ import java.util.UUID;
 public record CartItemResponse(
         Long id,
         UUID variantId,
+        UUID productId,
+        String productName,
         String sku,
         String size,
         String color,

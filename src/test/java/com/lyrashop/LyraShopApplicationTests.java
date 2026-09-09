@@ -2521,6 +2521,7 @@ class LyraShopApplicationTests {
                                 "paymentMethod", "COD"
                         ))))
                 .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.userId").isNotEmpty())
                 .andExpect(jsonPath("$.status").value("PENDING"))
                 .andExpect(jsonPath("$.paymentMethod").value("COD"))
                 .andExpect(jsonPath("$.paymentStatus").value("UNPAID"))
@@ -2722,6 +2723,8 @@ class LyraShopApplicationTests {
                 .andExpect(jsonPath("$.items.length()").value(1))
                 .andExpect(jsonPath("$.items[0].quantity").value(2))
                 .andExpect(jsonPath("$.items[0].sku").value(variant.getSku()))
+                .andExpect(jsonPath("$.items[0].productName").value(product.getName()))
+                .andExpect(jsonPath("$.items[0].productId").value(product.getId().toString()))
                 .andExpect(jsonPath("$.totalAmount").value(110.00));
         mockMvc.perform(post("/api/v1/cart/items")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + customerToken)
