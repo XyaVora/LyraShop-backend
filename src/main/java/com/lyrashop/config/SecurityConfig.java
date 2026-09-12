@@ -111,9 +111,11 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/products", "/api/v1/products/*").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/files/*").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/products/{productId}/reviews").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/promotions/active").permitAll()
                         .requestMatchers("/api/v1/admin/**")
                         .hasRole(UserRole.ADMIN.name())
-                        .requestMatchers("/api/v1/cart", "/api/v1/cart/**")
+                        .requestMatchers("/api/v1/cart", "/api/v1/cart/**", "/api/v1/wishlist", "/api/v1/wishlist/**",
+                                "/api/v1/addresses", "/api/v1/addresses/**")
                         .hasAnyRole(UserRole.CUSTOMER.name(), UserRole.ADMIN.name())
                         .requestMatchers("/api/v1/orders", "/api/v1/orders/**")
                         .hasAnyRole(UserRole.CUSTOMER.name(), UserRole.ADMIN.name())

@@ -29,6 +29,7 @@ import com.lyrashop.order.entity.PaymentMethod;
 import com.lyrashop.order.entity.PaymentStatus;
 import com.lyrashop.order.entity.ShopOrder;
 import com.lyrashop.order.repository.ShopOrderRepository;
+import com.lyrashop.promotion.service.PromotionService;
 
 @Service
 public class OrderService {
@@ -40,6 +41,7 @@ public class OrderService {
     private final ProductRepository products;
     private final CategoryRepository categories;
     private final VnpayService vnpay;
+    private final PromotionService promotions;
 
     public OrderService(
             ShopOrderRepository orders,
@@ -48,7 +50,8 @@ public class OrderService {
             ProductVariantRepository variants,
             ProductRepository products,
             CategoryRepository categories,
-            VnpayService vnpay
+            VnpayService vnpay,
+            PromotionService promotions
     ) {
         this.orders = orders;
         this.carts = carts;
@@ -57,6 +60,7 @@ public class OrderService {
         this.products = products;
         this.categories = categories;
         this.vnpay = vnpay;
+        this.promotions = promotions;
     }
 
     @Transactional
@@ -76,6 +80,7 @@ public class OrderService {
             throw new EmptyCartException();
         }
         BigDecimal total = BigDecimal.ZERO.setScale(2);
+        Map<UUID, BigDecimal> promotionPrices = promotions.activePrices();
         ShopOrder order = ShopOrder.create(
                 userId,
                 total,
@@ -97,7 +102,8 @@ public class OrderService {
             }
             variant.decrementStock(item.getQuantity());
             variants.save(variant);
-            BigDecimal subtotal = variant.getPrice().multiply(BigDecimal.valueOf(item.getQuantity()));
+            BigDecimal unitPrice = promotionPrices.getOrDefault(product.getId(), variant.getPrice()).min(variant.getPrice());
+            BigDecimal subtotal = unitPrice.multiply(BigDecimal.valueOf(item.getQuantity()));
             total = total.add(subtotal);
             order.addItem(OrderItem.snapshot(
                     variant.getId(),
@@ -106,7 +112,7 @@ public class OrderService {
                     variant.getSize(),
                     variant.getColor(),
                     item.getQuantity(),
-                    variant.getPrice(),
+                    unitPrice,
                     subtotal
             ));
         }

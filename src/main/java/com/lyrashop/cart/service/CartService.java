@@ -3,6 +3,7 @@ package com.lyrashop.cart.service;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.dao.DataIntegrityViolationException;
@@ -23,6 +24,7 @@ import com.lyrashop.catalog.product.repository.ProductRepository;
 import com.lyrashop.catalog.variant.entity.ProductVariant;
 import com.lyrashop.catalog.variant.repository.ProductVariantRepository;
 import com.lyrashop.catalog.variant.service.VariantNotFoundException;
+import com.lyrashop.promotion.service.PromotionService;
 
 @Service
 public class CartService {
@@ -32,19 +34,22 @@ public class CartService {
     private final ProductVariantRepository variants;
     private final ProductRepository products;
     private final CategoryRepository categories;
+    private final PromotionService promotions;
 
     public CartService(
             CartRepository carts,
             CartItemRepository items,
             ProductVariantRepository variants,
             ProductRepository products,
-            CategoryRepository categories
+            CategoryRepository categories,
+            PromotionService promotions
     ) {
         this.carts = carts;
         this.items = items;
         this.variants = variants;
         this.products = products;
         this.categories = categories;
+        this.promotions = promotions;
     }
 
     @Transactional
@@ -135,11 +140,13 @@ public class CartService {
 
     private CartResponse toResponse(Cart cart) {
         List<CartItem> cartItems = items.findAllByCartIdOrderByIdAsc(cart.getId());
+        Map<UUID, BigDecimal> promotionPrices = promotions.activePrices();
         List<CartItemResponse> responses = new ArrayList<>();
         BigDecimal total = BigDecimal.ZERO.setScale(2);
         for (CartItem item : cartItems) {
             ProductVariant variant = variants.findById(item.getVariantId()).orElseThrow(VariantNotFoundException::new);
-            BigDecimal subtotal = variant.getPrice().multiply(BigDecimal.valueOf(item.getQuantity()));
+            BigDecimal unitPrice = promotionPrices.getOrDefault(variant.getProductId(), variant.getPrice()).min(variant.getPrice());
+            BigDecimal subtotal = unitPrice.multiply(BigDecimal.valueOf(item.getQuantity()));
             total = total.add(subtotal);
             responses.add(new CartItemResponse(
                     item.getId(),
@@ -147,7 +154,7 @@ public class CartService {
                     variant.getSku(),
                     variant.getSize(),
                     variant.getColor(),
-                    variant.getPrice(),
+                    unitPrice,
                     item.getQuantity(),
                     subtotal
             ));

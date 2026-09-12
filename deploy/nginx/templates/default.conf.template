@@ -75,6 +75,14 @@ map $uri $reject_ambiguous_auth_path {
     ~^/api/v1/cart/items\; 1;
     ~^/api/v1/cart/items/[0-9]+/ 1;
     ~^/api/v1/cart/items/[0-9]+\; 1;
+    ~^/api/v1/wishlist/$ 1;
+    ~^/api/v1/wishlist\; 1;
+    ~^/api/v1/wishlist/items/$ 1;
+    ~^/api/v1/wishlist/items\; 1;
+    ~^/api/v1/addresses/$ 1;
+    ~^/api/v1/addresses\; 1;
+    ~^/api/v1/promotions/active/ 1;
+    ~^/api/v1/promotions/active\; 1;
     ~^/api/v1/admin/categories/$ 1;
     ~^/api/v1/admin/categories\; 1;
     ~^/api/v1/admin/categories/[0-9]+/$ 1;
@@ -358,6 +366,34 @@ server {
     location ^~ /api/v1/cart/ {
         client_max_body_size ${BUSINESS_MAX_REQUEST_BODY_BYTES};
         proxy_request_buffering on;
+        proxy_pass http://lyrashop_backend;
+    }
+
+    location = /api/v1/wishlist {
+        client_max_body_size ${BUSINESS_MAX_REQUEST_BODY_BYTES};
+        proxy_request_buffering on;
+        proxy_pass http://lyrashop_backend;
+    }
+
+    location ^~ /api/v1/wishlist/ {
+        client_max_body_size ${BUSINESS_MAX_REQUEST_BODY_BYTES};
+        proxy_request_buffering on;
+        proxy_pass http://lyrashop_backend;
+    }
+
+    location = /api/v1/addresses {
+        client_max_body_size ${BUSINESS_MAX_REQUEST_BODY_BYTES};
+        proxy_request_buffering on;
+        proxy_pass http://lyrashop_backend;
+    }
+
+    location ^~ /api/v1/addresses/ {
+        client_max_body_size ${BUSINESS_MAX_REQUEST_BODY_BYTES};
+        proxy_request_buffering on;
+        proxy_pass http://lyrashop_backend;
+    }
+
+    location = /api/v1/promotions/active {
         proxy_pass http://lyrashop_backend;
     }
 

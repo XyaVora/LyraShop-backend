@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import com.lyrashop.auth.service.RefreshCookieService;
+import com.lyrashop.address.service.AddressNotFoundException;
 import com.lyrashop.catalog.product.service.ProductCategoryNotFoundException;
 import com.lyrashop.catalog.product.service.ProductNotFoundException;
 import com.lyrashop.catalog.product.service.ProductQueryException;
@@ -334,6 +335,16 @@ public class GlobalExceptionHandler {
                         "Refresh token is invalid",
                         request.getRequestURI()
                 ));
+    }
+
+    @ExceptionHandler(AddressNotFoundException.class)
+    ResponseEntity<ApiErrorResponse> handleAddressNotFound(
+            AddressNotFoundException exception,
+            HttpServletRequest request
+    ) {
+        return problem(HttpStatus.NOT_FOUND, ApiErrorResponse.of(
+                HttpStatus.NOT_FOUND.value(), "ADDRESS_NOT_FOUND", "Address was not found",
+                request.getRequestURI()));
     }
 
     @ExceptionHandler(ReviewNotAllowedException.class)
