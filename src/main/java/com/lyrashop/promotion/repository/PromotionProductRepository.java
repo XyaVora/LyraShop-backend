@@ -6,7 +6,8 @@ import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import com.lyrashop.promotion.entity.PromotionProduct;
+import com.lyrashop.promotion.entity.PromotionProductId;
 
-public interface PromotionProductRepository extends JpaRepository<PromotionProduct, Long> {
-    List<PromotionProduct> findAllByPromotionIdOrderBySortOrderAscIdAsc(UUID promotionId);
+public interface PromotionProductRepository extends JpaRepository<PromotionProduct, PromotionProductId> {
+    List<PromotionProduct> findAllByPromotionIdOrderByProductIdAsc(UUID promotionId);
 }

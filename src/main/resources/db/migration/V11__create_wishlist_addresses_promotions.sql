@@ -1,4 +1,4 @@
-CREATE TABLE wishlist_items (
+CREATE TABLE IF NOT EXISTS wishlist_items (
     id BIGINT NOT NULL AUTO_INCREMENT,
     user_id BINARY(16) NOT NULL,
     product_id BINARY(16) NOT NULL,
@@ -10,7 +10,7 @@ CREATE TABLE wishlist_items (
     INDEX idx_wishlist_items_user_created (user_id, created_at, id)
 ) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 
-CREATE TABLE shipping_addresses (
+CREATE TABLE IF NOT EXISTS shipping_addresses (
     id BINARY(16) NOT NULL,
     user_id BINARY(16) NOT NULL,
     recipient_name VARCHAR(255) NOT NULL,
@@ -33,54 +33,49 @@ CREATE TABLE shipping_addresses (
     INDEX idx_shipping_addresses_user_default (user_id, is_default, created_at)
 ) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 
-CREATE TABLE promotions (
+CREATE TABLE IF NOT EXISTS promotions (
     id BINARY(16) NOT NULL,
-    title VARCHAR(255) NOT NULL,
-    subtitle VARCHAR(255) NULL,
-    description VARCHAR(1000) NULL,
-    badge VARCHAR(100) NULL,
-    starts_at DATETIME(6) NOT NULL,
-    ends_at DATETIME(6) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    description TEXT NULL,
+    discount_percent INT NOT NULL,
+    start_at DATETIME(6) NOT NULL,
+    end_at DATETIME(6) NOT NULL,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     CONSTRAINT pk_promotions PRIMARY KEY (id),
-    CONSTRAINT chk_promotions_title CHECK (CHAR_LENGTH(TRIM(title)) > 0),
-    CONSTRAINT chk_promotions_dates CHECK (ends_at > starts_at),
+    CONSTRAINT chk_promotions_name CHECK (CHAR_LENGTH(TRIM(name)) > 0),
+    CONSTRAINT chk_promotions_discount CHECK (discount_percent BETWEEN 0 AND 100),
+    CONSTRAINT chk_promotions_dates CHECK (end_at > start_at),
     CONSTRAINT chk_promotions_active CHECK (is_active IN (0, 1)),
-    INDEX idx_promotions_active_window (is_active, starts_at, ends_at)
+    INDEX idx_promotions_active_window (is_active, start_at, end_at)
 ) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 
-CREATE TABLE promotion_products (
-    id BIGINT NOT NULL AUTO_INCREMENT,
+CREATE TABLE IF NOT EXISTS promotion_products (
     promotion_id BINARY(16) NOT NULL,
     product_id BINARY(16) NOT NULL,
     sale_price DECIMAL(12,2) NOT NULL,
     original_price DECIMAL(12,2) NOT NULL,
     discount_percent INT NOT NULL,
-    sort_order INT NOT NULL DEFAULT 0,
-    CONSTRAINT pk_promotion_products PRIMARY KEY (id),
-    CONSTRAINT uk_promotion_products_promotion_product UNIQUE (promotion_id, product_id),
+    CONSTRAINT pk_promotion_products PRIMARY KEY (promotion_id, product_id),
     CONSTRAINT fk_promotion_products_promotion FOREIGN KEY (promotion_id) REFERENCES promotions (id) ON DELETE CASCADE,
     CONSTRAINT fk_promotion_products_product FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE CASCADE,
     CONSTRAINT chk_promotion_products_prices CHECK (sale_price >= 0 AND original_price >= sale_price),
     CONSTRAINT chk_promotion_products_discount CHECK (discount_percent BETWEEN 0 AND 100),
-    CONSTRAINT chk_promotion_products_sort CHECK (sort_order >= 0),
-    INDEX idx_promotion_products_order (promotion_id, sort_order, id)
+    INDEX idx_promotion_products_product (product_id)
 ) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 
 INSERT IGNORE INTO promotions
-    (id, title, subtitle, description, badge, starts_at, ends_at, is_active, created_at, updated_at)
+    (id, name, description, discount_percent, start_at, end_at, is_active, created_at, updated_at)
 VALUES
-    (UUID_TO_BIN('60000000-0000-0000-0000-000000000001'), 'Mùa Sale', 'Đặc quyền LYRA',
-     'Ưu đãi có thời hạn dành cho các thiết kế được chọn.', 'Ưu đãi có hạn',
+    (UUID_TO_BIN('60000000-0000-0000-0000-000000000001'), 'Mùa Sale',
+     'Ưu đãi có thời hạn dành cho các thiết kế được chọn.', 20,
      NOW() - INTERVAL 1 DAY, NOW() + INTERVAL 30 DAY, 1, NOW(), NOW());
 
 INSERT IGNORE INTO promotion_products
-    (promotion_id, product_id, sale_price, original_price, discount_percent, sort_order)
+    (promotion_id, product_id, sale_price, original_price, discount_percent)
 SELECT UUID_TO_BIN('60000000-0000-0000-0000-000000000001'), id,
-       ROUND(base_price * 0.8, 2), base_price, 20,
-       ROW_NUMBER() OVER (ORDER BY created_at, id)
+       ROUND(base_price * 0.8, 2), base_price, 20
 FROM products
 WHERE is_active = 1
 ORDER BY created_at, id

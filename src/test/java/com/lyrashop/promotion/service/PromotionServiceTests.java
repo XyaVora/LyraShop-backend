@@ -36,7 +36,7 @@ class PromotionServiceTests {
         when(promotion.getId()).thenReturn(promotionId);
         when(promotions.findFirstByActiveTrueAndStartsAtLessThanEqualAndEndsAtGreaterThanOrderByEndsAtAsc(now, now))
                 .thenReturn(Optional.of(promotion));
-        when(items.findAllByPromotionIdOrderBySortOrderAscIdAsc(promotionId))
+        when(items.findAllByPromotionIdOrderByProductIdAsc(promotionId))
                 .thenReturn(List.of(activeItem, inactiveItem));
         when(activeItem.getProductId()).thenReturn(activeProductId);
         when(activeItem.getSalePrice()).thenReturn(new BigDecimal("800.00"));

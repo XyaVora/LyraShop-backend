@@ -41,7 +41,7 @@ public class PromotionService {
     public Map<UUID, BigDecimal> activePrices() {
         Instant now = clock.instant();
         return promotions.findFirstByActiveTrueAndStartsAtLessThanEqualAndEndsAtGreaterThanOrderByEndsAtAsc(now, now)
-                .map(promotion -> items.findAllByPromotionIdOrderBySortOrderAscIdAsc(promotion.getId()).stream()
+                .map(promotion -> items.findAllByPromotionIdOrderByProductIdAsc(promotion.getId()).stream()
                         .filter(item -> products.existsByIdAndActiveTrue(item.getProductId()))
                         .collect(Collectors.toUnmodifiableMap(
                                 item -> item.getProductId(),
@@ -55,7 +55,7 @@ public class PromotionService {
         Instant now = clock.instant();
         return promotions.findFirstByActiveTrueAndStartsAtLessThanEqualAndEndsAtGreaterThanOrderByEndsAtAsc(now, now)
                 .map(promotion -> PromotionResponse.from(promotion,
-                        items.findAllByPromotionIdOrderBySortOrderAscIdAsc(promotion.getId()).stream()
+                        items.findAllByPromotionIdOrderByProductIdAsc(promotion.getId()).stream()
                                 .filter(item -> products.existsByIdAndActiveTrue(item.getProductId()))
                                 .map(PromotionProductResponse::from).toList()));
     }
