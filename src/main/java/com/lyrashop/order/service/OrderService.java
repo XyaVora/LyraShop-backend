@@ -30,6 +30,7 @@ import com.lyrashop.order.entity.PaymentStatus;
 import com.lyrashop.order.entity.ShopOrder;
 import com.lyrashop.order.repository.ShopOrderRepository;
 import com.lyrashop.promotion.service.PromotionService;
+import com.lyrashop.cart.service.StorePricing;
 
 @Service
 public class OrderService {
@@ -79,11 +80,12 @@ public class OrderService {
         if (items.isEmpty()) {
             throw new EmptyCartException();
         }
-        BigDecimal total = BigDecimal.ZERO.setScale(2);
+        BigDecimal subtotal = BigDecimal.ZERO.setScale(2);
+        BigDecimal discountedSubtotal = BigDecimal.ZERO.setScale(2);
         Map<UUID, BigDecimal> promotionPrices = promotions.activePrices();
         ShopOrder order = ShopOrder.create(
                 userId,
-                total,
+                BigDecimal.ZERO.setScale(2),
                 paymentMethod,
                 request.shippingAddress(),
                 request.shippingPhone(),
@@ -103,8 +105,9 @@ public class OrderService {
             variant.decrementStock(item.getQuantity());
             variants.save(variant);
             BigDecimal unitPrice = promotionPrices.getOrDefault(product.getId(), variant.getPrice()).min(variant.getPrice());
-            BigDecimal subtotal = unitPrice.multiply(BigDecimal.valueOf(item.getQuantity()));
-            total = total.add(subtotal);
+            BigDecimal itemSubtotal = unitPrice.multiply(BigDecimal.valueOf(item.getQuantity()));
+            subtotal = subtotal.add(variant.getPrice().multiply(BigDecimal.valueOf(item.getQuantity())));
+            discountedSubtotal = discountedSubtotal.add(itemSubtotal);
             order.addItem(OrderItem.snapshot(
                     variant.getId(),
                     product.getName(),
@@ -113,10 +116,12 @@ public class OrderService {
                     variant.getColor(),
                     item.getQuantity(),
                     unitPrice,
-                    subtotal
+                    itemSubtotal
             ));
         }
-        order.assignTotal(total);
+        BigDecimal discount = subtotal.subtract(discountedSubtotal);
+        BigDecimal shipping = StorePricing.shippingFee(discountedSubtotal);
+        order.assignPricing(subtotal, discount, shipping, discountedSubtotal.add(shipping));
         ShopOrder saved = orders.saveAndFlush(order);
         cartItems.deleteAllByCartId(cart.getId());
         if (paymentMethod == PaymentMethod.VNPAY) {
@@ -223,4 +228,3 @@ public class OrderService {
     }
 
 }
-

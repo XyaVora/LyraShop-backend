@@ -142,12 +142,14 @@ public class CartService {
         List<CartItem> cartItems = items.findAllByCartIdOrderByIdAsc(cart.getId());
         Map<UUID, BigDecimal> promotionPrices = promotions.activePrices();
         List<CartItemResponse> responses = new ArrayList<>();
-        BigDecimal total = BigDecimal.ZERO.setScale(2);
+        BigDecimal subtotal = BigDecimal.ZERO.setScale(2);
+        BigDecimal discountedSubtotal = BigDecimal.ZERO.setScale(2);
         for (CartItem item : cartItems) {
             ProductVariant variant = variants.findById(item.getVariantId()).orElseThrow(VariantNotFoundException::new);
             BigDecimal unitPrice = promotionPrices.getOrDefault(variant.getProductId(), variant.getPrice()).min(variant.getPrice());
-            BigDecimal subtotal = unitPrice.multiply(BigDecimal.valueOf(item.getQuantity()));
-            total = total.add(subtotal);
+            BigDecimal itemSubtotal = unitPrice.multiply(BigDecimal.valueOf(item.getQuantity()));
+            subtotal = subtotal.add(variant.getPrice().multiply(BigDecimal.valueOf(item.getQuantity())));
+            discountedSubtotal = discountedSubtotal.add(itemSubtotal);
             responses.add(new CartItemResponse(
                     item.getId(),
                     variant.getId(),
@@ -156,9 +158,12 @@ public class CartService {
                     variant.getColor(),
                     unitPrice,
                     item.getQuantity(),
-                    subtotal
+                    itemSubtotal
             ));
         }
-        return new CartResponse(cart.getId(), responses, total);
+        BigDecimal discount = subtotal.subtract(discountedSubtotal);
+        BigDecimal shipping = StorePricing.shippingFee(discountedSubtotal);
+        return new CartResponse(cart.getId(), responses, subtotal, discount, shipping,
+                discountedSubtotal.add(shipping));
     }
 }

@@ -98,6 +98,7 @@ public class SecurityConfig {
                 )
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers(EndpointRequest.to(HealthEndpoint.class)).permitAll()
+                        .requestMatchers("/error").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/register").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/login").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/auth/csrf").permitAll()
@@ -108,14 +109,18 @@ public class SecurityConfig {
                                 "/api/v1/categories",
                                 "/api/v1/categories/*"
                         ).permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/v1/products", "/api/v1/products/*").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/products", "/api/v1/products/*",
+                                "/api/v1/products/*/related", "/api/v1/brand").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/files/*").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/products/{productId}/reviews").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/promotions/active").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/wishlist/shared/*").permitAll()
                         .requestMatchers("/api/v1/admin/**")
                         .hasRole(UserRole.ADMIN.name())
                         .requestMatchers("/api/v1/cart", "/api/v1/cart/**", "/api/v1/wishlist", "/api/v1/wishlist/**",
-                                "/api/v1/addresses", "/api/v1/addresses/**")
+                                 "/api/v1/addresses", "/api/v1/addresses/**")
+                         .hasAnyRole(UserRole.CUSTOMER.name(), UserRole.ADMIN.name())
+                        .requestMatchers("/api/v1/search-history", "/api/v1/search-history/**")
                         .hasAnyRole(UserRole.CUSTOMER.name(), UserRole.ADMIN.name())
                         .requestMatchers("/api/v1/orders", "/api/v1/orders/**")
                         .hasAnyRole(UserRole.CUSTOMER.name(), UserRole.ADMIN.name())

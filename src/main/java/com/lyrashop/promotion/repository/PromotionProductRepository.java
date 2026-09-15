@@ -10,4 +10,5 @@ import com.lyrashop.promotion.entity.PromotionProductId;
 
 public interface PromotionProductRepository extends JpaRepository<PromotionProduct, PromotionProductId> {
     List<PromotionProduct> findAllByPromotionIdOrderByProductIdAsc(UUID promotionId);
+    void deleteAllByPromotionId(UUID promotionId);
 }

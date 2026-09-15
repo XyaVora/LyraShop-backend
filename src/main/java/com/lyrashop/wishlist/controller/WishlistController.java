@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.lyrashop.wishlist.dto.AddWishlistItemRequest;
 import com.lyrashop.wishlist.dto.WishlistItemResponse;
 import com.lyrashop.wishlist.service.WishlistService;
+import com.lyrashop.wishlist.dto.WishlistShareResponse;
 
 import jakarta.validation.Valid;
 
@@ -49,6 +50,11 @@ public class WishlistController {
     public ResponseEntity<Void> clear(Authentication auth) {
         service.clear(userId(auth));
         return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping(path = "/share", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<WishlistShareResponse> share(Authentication auth) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(service.share(userId(auth)));
     }
 
     private static UUID userId(Authentication auth) { return UUID.fromString(auth.getName()); }

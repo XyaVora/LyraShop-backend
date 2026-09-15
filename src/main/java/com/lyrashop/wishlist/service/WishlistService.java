@@ -12,15 +12,29 @@ import com.lyrashop.catalog.product.service.ProductNotFoundException;
 import com.lyrashop.wishlist.dto.WishlistItemResponse;
 import com.lyrashop.wishlist.entity.WishlistItem;
 import com.lyrashop.wishlist.repository.WishlistItemRepository;
+import com.lyrashop.wishlist.repository.WishlistShareRepository;
+import com.lyrashop.wishlist.dto.WishlistShareResponse;
+import com.lyrashop.wishlist.entity.WishlistShare;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.beans.factory.annotation.Autowired;
+import java.time.Instant;
 
 @Service
 public class WishlistService {
     private final WishlistItemRepository items;
     private final ProductRepository products;
+    private final WishlistShareRepository shares;
 
-    public WishlistService(WishlistItemRepository items, ProductRepository products) {
+    @Autowired
+    public WishlistService(WishlistItemRepository items, ProductRepository products, WishlistShareRepository shares) {
         this.items = items;
         this.products = products;
+        this.shares = shares;
+    }
+
+    public WishlistService(WishlistItemRepository items, ProductRepository products) {
+        this(items, products, null);
     }
 
     @Transactional(readOnly = true)
@@ -47,4 +61,18 @@ public class WishlistService {
 
     @Transactional
     public void clear(UUID userId) { items.deleteAllByUserId(userId); }
+
+    @Transactional
+    public WishlistShareResponse share(UUID userId) {
+        WishlistShare share = shares.save(WishlistShare.create(userId));
+        return new WishlistShareResponse(share.getId(), share.getExpiresAt());
+    }
+
+    @Transactional(readOnly = true)
+    public List<WishlistItemResponse> shared(UUID shareId) {
+        WishlistShare share = shares.findById(shareId)
+                .filter(value -> value.getExpiresAt().isAfter(Instant.now()))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Liên kết không tồn tại hoặc đã hết hạn"));
+        return list(share.getUserId());
+    }
 }

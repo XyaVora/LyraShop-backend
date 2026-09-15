@@ -23,6 +23,10 @@ public final class ProductSpecifications {
         return (root, query, builder) -> builder.equal(root.get("id"), id);
     }
 
+    public static Specification<Product> idNot(java.util.UUID id) {
+        return (root, query, builder) -> builder.notEqual(root.get("id"), id);
+    }
+
     public static Specification<Product> categoryActive() {
         return (root, query, builder) -> {
             Subquery<Long> subquery = query.subquery(Long.class);
@@ -42,10 +46,17 @@ public final class ProductSpecifications {
 
     public static Specification<Product> keyword(String keyword) {
         String pattern = "%" + escapeLike(keyword.toLowerCase(Locale.ROOT)) + "%";
+        boolean asciiKeyword = keyword.codePoints().allMatch(codePoint -> codePoint < 128);
         return (root, query, builder) -> {
             var name = builder.lower(root.get("name"));
-            var slug = builder.lower(root.get("slug"));
             var description = builder.lower(root.get("description"));
+            if (!asciiKeyword) {
+                return builder.or(
+                        builder.like(name, pattern, '\\'),
+                        builder.like(description, pattern, '\\')
+                );
+            }
+            var slug = builder.lower(root.get("slug"));
             return builder.or(
                     builder.like(name, pattern, '\\'),
                     builder.like(slug, pattern, '\\'),

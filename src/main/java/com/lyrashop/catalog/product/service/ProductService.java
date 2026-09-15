@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.sql.SQLException;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -17,6 +18,7 @@ import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
@@ -236,6 +238,42 @@ public class ProductService {
         return productRepository.findOne(specification)
                 .map(product -> withSummary(product, summariesFor(List.of(product.getId()))))
                 .orElseThrow(ProductNotFoundException::new);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ProductResult> related(UUID id, int size) {
+        Product product = productRepository.findOne(ProductSpecifications.id(id)
+                        .and(ProductSpecifications.active())
+                        .and(ProductSpecifications.categoryActive()))
+                .orElseThrow(ProductNotFoundException::new);
+        int limit = Math.max(1, Math.min(size, 12));
+        var matches = productRepository.findAll(
+                ProductSpecifications.active()
+                        .and(ProductSpecifications.categoryActive())
+                        .and(ProductSpecifications.categoryId(product.getCategoryId()))
+                        .and(ProductSpecifications.idNot(id)),
+                PageRequest.of(0, limit, Sort.by(Sort.Order.desc("createdAt"), Sort.Order.asc("id")))
+        ).getContent();
+        Map<UUID, ProductReviewSummary> summaries = summariesFor(matches.stream().map(Product::getId).toList());
+        return matches.stream().map(item -> withSummary(item, summaries)).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<ProductResult> featured(int size) {
+        int limit = Math.max(1, Math.min(size, 20));
+        var candidates = productRepository.findAll(
+                ProductSpecifications.active().and(ProductSpecifications.categoryActive()),
+                PageRequest.of(0, 100, Sort.by(Sort.Order.desc("createdAt"), Sort.Order.asc("id")))
+        ).getContent();
+        Map<UUID, ProductReviewSummary> summaries = summariesFor(candidates.stream().map(Product::getId).toList());
+        return candidates.stream()
+                .map(item -> withSummary(item, summaries))
+                .sorted(Comparator.comparingLong(ProductResult::reviewCount).reversed()
+                        .thenComparing(ProductResult::averageRating,
+                                Comparator.nullsLast(Comparator.reverseOrder()))
+                        .thenComparing(ProductResult::createdAt, Comparator.reverseOrder()))
+                .limit(limit)
+                .toList();
     }
 
     private Map<UUID, ProductReviewSummary> summariesFor(Collection<UUID> productIds) {

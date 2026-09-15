@@ -41,6 +41,18 @@ public class ShopOrder {
     private UUID userId;
 
     @JdbcTypeCode(DECIMAL)
+    @Column(name = "subtotal_amount", nullable = false, precision = 12, scale = 2)
+    private BigDecimal subtotalAmount;
+
+    @JdbcTypeCode(DECIMAL)
+    @Column(name = "discount_amount", nullable = false, precision = 12, scale = 2)
+    private BigDecimal discountAmount;
+
+    @JdbcTypeCode(DECIMAL)
+    @Column(name = "shipping_fee", nullable = false, precision = 12, scale = 2)
+    private BigDecimal shippingFee;
+
+    @JdbcTypeCode(DECIMAL)
     @Column(name = "total_amount", nullable = false, precision = 12, scale = 2)
     private BigDecimal totalAmount;
 
@@ -89,6 +101,9 @@ public class ShopOrder {
     ) {
         this.userId = userId;
         this.totalAmount = totalAmount;
+        this.subtotalAmount = totalAmount;
+        this.discountAmount = BigDecimal.ZERO.setScale(2);
+        this.shippingFee = BigDecimal.ZERO.setScale(2);
         this.status = OrderStatus.PENDING;
         this.paymentMethod = paymentMethod;
         this.paymentStatus = PaymentStatus.UNPAID;
@@ -113,7 +128,11 @@ public class ShopOrder {
         item.setOrder(this);
     }
 
-    public void assignTotal(BigDecimal totalAmount) {
+    public void assignPricing(BigDecimal subtotalAmount, BigDecimal discountAmount,
+            BigDecimal shippingFee, BigDecimal totalAmount) {
+        this.subtotalAmount = subtotalAmount;
+        this.discountAmount = discountAmount;
+        this.shippingFee = shippingFee;
         this.totalAmount = totalAmount;
     }
 
@@ -151,6 +170,9 @@ public class ShopOrder {
     public UUID getId() { return id; }
     public UUID getUserId() { return userId; }
     public BigDecimal getTotalAmount() { return totalAmount; }
+    public BigDecimal getSubtotalAmount() { return subtotalAmount; }
+    public BigDecimal getDiscountAmount() { return discountAmount; }
+    public BigDecimal getShippingFee() { return shippingFee; }
     public OrderStatus getStatus() { return status; }
     public PaymentMethod getPaymentMethod() { return paymentMethod; }
     public PaymentStatus getPaymentStatus() { return paymentStatus; }

@@ -24,6 +24,14 @@ public class PromotionProduct {
     @JdbcTypeCode(DECIMAL) @Column(name = "original_price", nullable = false, precision = 12, scale = 2) private BigDecimal originalPrice;
     @Column(name = "discount_percent", nullable = false) private int discountPercent;
     protected PromotionProduct() {}
+    private PromotionProduct(UUID promotionId, UUID productId, BigDecimal salePrice, BigDecimal originalPrice, int discountPercent) {
+        this.promotionId = promotionId; this.productId = productId; this.salePrice = salePrice;
+        this.originalPrice = originalPrice; this.discountPercent = discountPercent;
+    }
+    public static PromotionProduct create(UUID promotionId, UUID productId, BigDecimal salePrice,
+            BigDecimal originalPrice, int discountPercent) {
+        return new PromotionProduct(promotionId, productId, salePrice, originalPrice, discountPercent);
+    }
     public UUID getPromotionId() { return promotionId; }
     public UUID getProductId() { return productId; }
     public BigDecimal getSalePrice() { return salePrice; }
