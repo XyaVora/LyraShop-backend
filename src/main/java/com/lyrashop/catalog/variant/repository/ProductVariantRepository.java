@@ -41,5 +41,7 @@ public interface ProductVariantRepository extends JpaRepository<ProductVariant, 
 
     List<ProductVariant> findAllByProductIdOrderBySkuAscIdAsc(UUID productId);
 
+    List<ProductVariant> findAllByProductIdInAndActiveTrueOrderByProductIdAscSkuAscIdAsc(List<UUID> productIds);
+
     boolean existsBySkuAndIdNot(String sku, UUID id);
 }

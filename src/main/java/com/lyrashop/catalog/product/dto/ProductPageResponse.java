@@ -18,9 +18,9 @@ public record ProductPageResponse(
         content = List.copyOf(content);
     }
 
-    public static ProductPageResponse from(Page<ProductResult> products) {
+    public static ProductPageResponse from(Page<ProductResult> products, List<ProductResponse> content) {
         return new ProductPageResponse(
-                products.getContent().stream().map(ProductResponse::from).toList(),
+                content,
                 products.getNumber(),
                 products.getSize(),
                 products.getTotalElements(),

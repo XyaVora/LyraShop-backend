@@ -17,6 +17,7 @@ import com.lyrashop.catalog.category.dto.CreateCategoryRequest;
 import com.lyrashop.catalog.category.dto.UpdateCategoryRequest;
 import com.lyrashop.catalog.category.entity.Category;
 import com.lyrashop.catalog.category.repository.CategoryRepository;
+import com.lyrashop.catalog.product.repository.ProductRepository;
 import com.lyrashop.exception.CategoryNotFoundException;
 import com.lyrashop.exception.CategorySlugAlreadyExistsException;
 
@@ -31,9 +32,11 @@ public class CategoryService {
     private static final int MYSQL_DUPLICATE_KEY_ERROR = 1062;
 
     private final CategoryRepository categoryRepository;
+    private final ProductRepository productRepository;
 
-    public CategoryService(CategoryRepository categoryRepository) {
+    public CategoryService(CategoryRepository categoryRepository, ProductRepository productRepository) {
         this.categoryRepository = categoryRepository;
+        this.productRepository = productRepository;
     }
 
     @Transactional(readOnly = true)
@@ -52,6 +55,11 @@ public class CategoryService {
         return categoryRepository.findByIdAndActiveTrue(id)
                 .map(CategoryResult::from)
                 .orElseThrow(CategoryNotFoundException::new);
+    }
+
+    @Transactional(readOnly = true)
+    public long countActiveProducts(Long categoryId) {
+        return productRepository.countByCategoryIdAndActiveTrue(categoryId);
     }
 
     @Transactional

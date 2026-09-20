@@ -31,6 +31,7 @@ public class PasswordResetService {
   try { user=users.findByEmail(User.canonicalizeEmail(email)).filter(User::isActive).orElse(null); }
   catch(IllegalArgumentException e){ return; }
   if(user==null)return;
+  if(tokens.existsByUserIdAndCreatedAtAfter(user.getId(), Instant.now().minus(properties.requestCooldown())))return;
   tokens.invalidateAll(user.getId());
   String raw=generator.generate();
   tokens.saveAndFlush(PasswordResetToken.issue(user.getId(),RefreshTokenDigest.fromRawToken(raw).bytes(),Instant.now().plus(properties.tokenTtl())));

@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.time.Instant;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -137,6 +138,7 @@ public class OrderService {
         order.assignGift(request.giftWrap(), request.giftMessage());
         order.assignPricing(subtotal, discount, voucher.shippingFee(), giftWrapFee, total, voucher.code());
         ShopOrder saved = orders.saveAndFlush(order);
+        recordTracking(saved.getId(), "ORDER_PLACED", "Đơn hàng đã được tiếp nhận", null);
         vouchers.recordRedemption(userId, voucher.code(), saved.getId());
         cartItems.deleteAllByCartId(cart.getId());
         if (paymentMethod == PaymentMethod.VNPAY) {
@@ -214,7 +216,9 @@ public class OrderService {
         }
         restoreStock(order);
         vouchers.release(orderId);
-        return OrderResponse.from(orders.saveAndFlush(order));
+        ShopOrder saved = orders.saveAndFlush(order);
+        recordTracking(orderId, "CANCELLED", "Đơn hàng đã được hủy", null);
+        return OrderResponse.from(saved);
     }
 
     @Transactional
@@ -226,7 +230,9 @@ public class OrderService {
         } catch (IllegalStateException exception) {
             throw new InvalidOrderStatusException();
         }
-        return OrderResponse.from(orders.saveAndFlush(order));
+        ShopOrder saved = orders.saveAndFlush(order);
+        recordTracking(orderId, "DELIVERED", "Khách hàng đã xác nhận nhận hàng", null);
+        return OrderResponse.from(saved);
     }
 
     @Transactional
@@ -251,7 +257,9 @@ public class OrderService {
         } catch (IllegalStateException exception) {
             throw new InvalidOrderStatusException();
         }
-        return OrderResponse.from(orders.saveAndFlush(order));
+        ShopOrder saved = orders.saveAndFlush(order);
+        recordTracking(orderId, "RETURN_REQUESTED", "Khách hàng đã gửi yêu cầu trả hàng", null);
+        return OrderResponse.from(saved);
     }
 
     @Transactional
@@ -263,7 +271,9 @@ public class OrderService {
         } catch (IllegalStateException exception) {
             throw new InvalidOrderStatusException();
         }
-        return OrderResponse.from(orders.saveAndFlush(order));
+        ShopOrder saved = orders.saveAndFlush(order);
+        recordTracking(orderId, "RETURN_CANCELLED", "Khách hàng đã hủy yêu cầu trả hàng", null);
+        return OrderResponse.from(saved);
     }
 
     @Transactional
@@ -271,12 +281,14 @@ public class OrderService {
             java.time.Instant estimatedDeliveryAt) {
         ShopOrder order = orders.findForUpdate(orderId).orElseThrow(OrderNotFoundException::new);
         order.assignTracking(carrier, code, url, estimatedDeliveryAt);
-        return OrderResponse.from(orders.saveAndFlush(order));
+        ShopOrder saved = orders.saveAndFlush(order);
+        recordTracking(orderId, "TRACKING_ASSIGNED", "Đã cập nhật mã vận đơn " + code, carrier);
+        return OrderResponse.from(saved);
     }
 
     @Transactional(readOnly=true)
     public List<Map<String,Object>> tracking(UUID userId,UUID orderId){orders.findByIdAndUserId(orderId,userId).orElseThrow(OrderNotFoundException::new);return trackingEvents.findAllByOrderIdOrderByOccurredAtDesc(orderId).stream().map(e->{Map<String,Object> m=new java.util.LinkedHashMap<>();m.put("id",e.getId());m.put("status",e.getStatus());m.put("description",e.getDescription());m.put("location",e.getLocation());m.put("occurredAt",e.getOccurredAt());return m;}).toList();}
-    @Transactional public Map<String,Object> addTrackingEvent(UUID orderId,com.lyrashop.order.dto.TrackingEventRequest r){orders.findById(orderId).orElseThrow(OrderNotFoundException::new);var e=trackingEvents.save(new com.lyrashop.order.entity.TrackingEvent(orderId,r.status(),r.description(),r.location(),r.occurredAt()));return Map.of("id",e.getId(),"status",e.getStatus(),"description",e.getDescription(),"occurredAt",e.getOccurredAt());}
+    @Transactional public Map<String,Object> addTrackingEvent(UUID orderId,com.lyrashop.order.dto.TrackingEventRequest r){orders.findById(orderId).orElseThrow(OrderNotFoundException::new);var e=trackingEvents.save(new com.lyrashop.order.entity.TrackingEvent(orderId,r.status(),r.description(),r.location(),r.occurredAt()));return trackingEventResponse(e);}
 
     @Transactional
     public OrderResponse updateStatus(UUID orderId, String status) {
@@ -292,7 +304,9 @@ public class OrderService {
         } catch (IllegalStateException exception) {
             throw new InvalidOrderStatusException();
         }
-        return OrderResponse.from(orders.saveAndFlush(order));
+        ShopOrder saved = orders.saveAndFlush(order);
+        recordTracking(orderId, next.name(), statusDescription(next), null);
+        return OrderResponse.from(saved);
     }
 
     private void restoreStock(ShopOrder order) {
@@ -302,6 +316,33 @@ public class OrderService {
             variant.incrementStock(item.getQuantity());
             variants.save(variant);
         }
+    }
+
+    private void recordTracking(UUID orderId, String status, String description, String location) {
+        trackingEvents.save(new com.lyrashop.order.entity.TrackingEvent(
+                orderId, status, description, location, Instant.now()
+        ));
+    }
+
+    private static Map<String, Object> trackingEventResponse(com.lyrashop.order.entity.TrackingEvent event) {
+        Map<String, Object> response = new java.util.LinkedHashMap<>();
+        response.put("id", event.getId());
+        response.put("status", event.getStatus());
+        response.put("description", event.getDescription());
+        response.put("location", event.getLocation());
+        response.put("occurredAt", event.getOccurredAt());
+        return response;
+    }
+
+    private static String statusDescription(OrderStatus status) {
+        return switch (status) {
+            case CONFIRMED -> "Đơn hàng đã được xác nhận";
+            case PROCESSING -> "Đơn hàng đang được chuẩn bị";
+            case SHIPPING -> "Đơn hàng đã được bàn giao cho đơn vị vận chuyển";
+            case DELIVERED -> "Đơn hàng đã được giao thành công";
+            case CANCELLED -> "Đơn hàng đã được hủy";
+            default -> "Trạng thái đơn hàng đã được cập nhật";
+        };
     }
 
 }

@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 import com.lyrashop.catalog.variant.repository.PublicProductVariantProjection;
+import com.lyrashop.catalog.variant.entity.ProductVariant;
 
 public record ProductVariantResult(
         UUID id,
@@ -15,6 +16,17 @@ public record ProductVariantResult(
 ) {
 
     public static ProductVariantResult from(PublicProductVariantProjection variant) {
+        return new ProductVariantResult(
+                variant.getId(),
+                variant.getSku(),
+                variant.getSize(),
+                variant.getColor(),
+                variant.getPrice(),
+                variant.getStock()
+        );
+    }
+
+    public static ProductVariantResult from(ProductVariant variant) {
         return new ProductVariantResult(
                 variant.getId(),
                 variant.getSku(),

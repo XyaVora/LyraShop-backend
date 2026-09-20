@@ -30,8 +30,13 @@ import com.lyrashop.catalog.product.dto.AdminProductDetailResponse;
 import com.lyrashop.catalog.product.dto.AdminProductResponse;
 import com.lyrashop.catalog.product.dto.CreateProductRequest;
 import com.lyrashop.catalog.product.dto.UpdateProductRequest;
+import com.lyrashop.catalog.product.dto.ProductResponse;
 import com.lyrashop.catalog.product.entity.Product;
+import com.lyrashop.catalog.product.entity.ProductImage;
+import com.lyrashop.catalog.product.repository.ProductImageRepository;
 import com.lyrashop.catalog.product.repository.ProductRepository;
+import com.lyrashop.catalog.variant.entity.ProductVariant;
+import com.lyrashop.catalog.variant.repository.ProductVariantRepository;
 import com.lyrashop.catalog.variant.service.ProductVariantService;
 import com.lyrashop.review.repository.ProductReviewSummary;
 import com.lyrashop.review.repository.ReviewRepository;
@@ -44,19 +49,25 @@ public class ProductService {
     private final ProductVariantService productVariantService;
     private final ProductImageService productImageService;
     private final ReviewRepository reviews;
+    private final ProductVariantRepository variants;
+    private final ProductImageRepository images;
 
     public ProductService(
             ProductRepository productRepository,
             CategoryRepository categoryRepository,
             ProductVariantService productVariantService,
             ProductImageService productImageService,
-            ReviewRepository reviews
+            ReviewRepository reviews,
+            ProductVariantRepository variants,
+            ProductImageRepository images
     ) {
         this.productRepository = productRepository;
         this.categoryRepository = categoryRepository;
         this.productVariantService = productVariantService;
         this.productImageService = productImageService;
         this.reviews = reviews;
+        this.variants = variants;
+        this.images = images;
     }
 
     @Transactional
@@ -273,6 +284,27 @@ public class ProductService {
                                 Comparator.nullsLast(Comparator.reverseOrder()))
                         .thenComparing(ProductResult::createdAt, Comparator.reverseOrder()))
                 .limit(limit)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<ProductResponse> publicResponses(List<ProductResult> products) {
+        if (products.isEmpty()) {
+            return List.of();
+        }
+        List<UUID> ids = products.stream().map(ProductResult::id).toList();
+        Map<UUID, List<ProductVariant>> variantsByProduct = variants
+                .findAllByProductIdInAndActiveTrueOrderByProductIdAscSkuAscIdAsc(ids)
+                .stream().collect(Collectors.groupingBy(ProductVariant::getProductId));
+        Map<UUID, List<ProductImage>> imagesByProduct = images
+                .findAllByProductIdInOrderByProductIdAscSortOrderAscIdAsc(ids)
+                .stream().collect(Collectors.groupingBy(ProductImage::getProductId));
+        return products.stream()
+                .map(product -> ProductResponse.from(
+                        product,
+                        variantsByProduct.getOrDefault(product.id(), List.of()),
+                        imagesByProduct.getOrDefault(product.id(), List.of())
+                ))
                 .toList();
     }
 

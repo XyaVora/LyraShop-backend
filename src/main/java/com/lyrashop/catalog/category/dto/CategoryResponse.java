@@ -11,10 +11,15 @@ public record CategoryResponse(
         String description,
         Long parentId,
         Instant createdAt,
-        Instant updatedAt
+        Instant updatedAt,
+        long productCount
 ) {
 
     public static CategoryResponse from(CategoryResult category) {
+        return from(category, 0);
+    }
+
+    public static CategoryResponse from(CategoryResult category, long productCount) {
         return new CategoryResponse(
                 category.id(),
                 category.name(),
@@ -22,7 +27,8 @@ public record CategoryResponse(
                 category.description(),
                 category.parentId(),
                 category.createdAt(),
-                category.updatedAt()
+                category.updatedAt(),
+                productCount
         );
     }
 }

@@ -45,7 +45,8 @@ public class ProductController {
                 keyword, category, variantSize, color, minPrice, maxPrice, sort, page, size,
                 clothingSize, pageSize
         );
-        return ProductPageResponse.from(productService.list(query));
+        var products = productService.list(query);
+        return ProductPageResponse.from(products, productService.publicResponses(products.getContent()));
     }
 
     @GetMapping(path = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
@@ -61,14 +62,14 @@ public class ProductController {
 
     @GetMapping(path = "/featured", produces = MediaType.APPLICATION_JSON_VALUE)
     public List<ProductResponse> featured(@RequestParam(defaultValue = "8") int size) {
-        return productService.featured(size).stream().map(ProductResponse::from).toList();
+        return productService.publicResponses(productService.featured(size));
     }
 
     @GetMapping(path = "/{id}/related", produces = MediaType.APPLICATION_JSON_VALUE)
     public List<ProductResponse> related(@PathVariable String id,
             @RequestParam(defaultValue = "4") int size) {
         try {
-            return productService.related(UUID.fromString(id), size).stream().map(ProductResponse::from).toList();
+            return productService.publicResponses(productService.related(UUID.fromString(id), size));
         } catch (IllegalArgumentException exception) {
             throw new ProductNotFoundException();
         }

@@ -6,6 +6,7 @@ import org.springframework.data.repository.query.Param;
 import com.lyrashop.auth.entity.PasswordResetToken;
 import jakarta.persistence.LockModeType;
 public interface PasswordResetTokenRepository extends JpaRepository<PasswordResetToken, UUID> {
+ boolean existsByUserIdAndCreatedAtAfter(UUID userId, java.time.Instant createdAfter);
  @Lock(LockModeType.PESSIMISTIC_WRITE)
  @Query("select t from PasswordResetToken t where t.tokenHash=:hash and t.usedAt is null and t.expiresAt > CURRENT_TIMESTAMP")
  Optional<PasswordResetToken> findActiveForUpdate(@Param("hash") byte[] hash);

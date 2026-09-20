@@ -25,12 +25,14 @@ public class CategoryController {
     public List<CategoryResponse> list() {
         return categoryService.listActive()
                 .stream()
-                .map(CategoryResponse::from)
+                .map(category -> CategoryResponse.from(
+                        category, categoryService.countActiveProducts(category.id())
+                ))
                 .toList();
     }
 
     @GetMapping(path = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
     public CategoryResponse get(@PathVariable Long id) {
-        return CategoryResponse.from(categoryService.getActive(id));
+        return CategoryResponse.from(categoryService.getActive(id), categoryService.countActiveProducts(id));
     }
 }

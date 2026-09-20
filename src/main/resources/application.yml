@@ -64,6 +64,7 @@ app:
       frontend-url: ${PASSWORD_RESET_FRONTEND_URL:http://localhost:5173/auth}
       from-address: ${PASSWORD_RESET_FROM:no-reply@lyrashop.local}
       token-ttl: ${PASSWORD_RESET_TOKEN_TTL:30m}
+      request-cooldown: ${PASSWORD_RESET_REQUEST_COOLDOWN:2m}
     cors:
       allowed-origins: ${CORS_ALLOWED_ORIGINS:}
     auth:
