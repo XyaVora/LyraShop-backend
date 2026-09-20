@@ -90,7 +90,7 @@ public final class ProductSpecifications {
             if (color != null) {
                 match = builder.and(
                         match,
-                        builder.equal(builder.lower(variant.get("color")), color)
+                        builder.like(builder.lower(variant.get("color")), "%" + escapeLike(color) + "%", '\\')
                 );
             }
             subquery.select(variant.get("id")).where(match);

@@ -8,6 +8,7 @@ import com.lyrashop.order.entity.OrderItem;
 public record OrderItemResponse(
         Long id,
         UUID variantId,
+        UUID productId,
         String productName,
         String sku,
         String size,
@@ -20,6 +21,7 @@ public record OrderItemResponse(
         return new OrderItemResponse(
                 item.getId(),
                 item.getVariantId(),
+                item.getProductId(),
                 item.getProductName(),
                 item.getSku(),
                 item.getSize(),

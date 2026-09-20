@@ -1,0 +1,16 @@
+ALTER TABLE orders
+    ADD COLUMN gift_wrap_fee DECIMAL(12,2) NOT NULL DEFAULT 0 AFTER shipping_fee,
+    ADD COLUMN voucher_code VARCHAR(30) NULL AFTER note,
+    ADD COLUMN gift_wrap BOOLEAN NOT NULL DEFAULT FALSE AFTER voucher_code,
+    ADD COLUMN gift_message VARCHAR(500) NULL AFTER gift_wrap,
+    ADD COLUMN cancellation_reason VARCHAR(500) NULL AFTER gift_message,
+    ADD COLUMN shipping_carrier VARCHAR(100) NULL AFTER cancellation_reason,
+    ADD COLUMN tracking_code VARCHAR(100) NULL AFTER shipping_carrier,
+    ADD COLUMN tracking_url VARCHAR(500) NULL AFTER tracking_code,
+    ADD COLUMN estimated_delivery_at DATETIME(6) NULL AFTER tracking_url,
+    ADD COLUMN delivered_at DATETIME(6) NULL AFTER estimated_delivery_at,
+    ADD COLUMN return_status VARCHAR(30) NULL AFTER delivered_at,
+    ADD COLUMN return_reason VARCHAR(1000) NULL AFTER return_status,
+    ADD COLUMN return_requested_at DATETIME(6) NULL AFTER return_reason,
+    ADD CONSTRAINT chk_orders_gift_wrap_fee CHECK (gift_wrap_fee >= 0),
+    ADD INDEX idx_orders_tracking_code (tracking_code);

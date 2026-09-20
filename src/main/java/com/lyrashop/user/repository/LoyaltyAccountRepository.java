@@ -1,0 +1,1 @@
+package com.lyrashop.user.repository; import java.util.UUID;import org.springframework.data.jpa.repository.JpaRepository;import com.lyrashop.user.entity.LoyaltyAccount; public interface LoyaltyAccountRepository extends JpaRepository<LoyaltyAccount,UUID>{}

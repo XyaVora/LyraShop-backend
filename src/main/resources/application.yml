@@ -27,6 +27,14 @@ spring:
     multipart:
       max-file-size: ${UPLOAD_MAX_BYTES:2097152}
       max-request-size: ${UPLOAD_MAX_BYTES:2097152}
+  mail:
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:1025}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail.smtp.auth: ${MAIL_SMTP_AUTH:false}
+      mail.smtp.starttls.enable: ${MAIL_STARTTLS:false}
 
 server:
   port: ${SERVER_PORT:8080}
@@ -52,6 +60,10 @@ app:
       password: ${BOOTSTRAP_ADMIN_PASSWORD:}
       full-name: ${BOOTSTRAP_ADMIN_FULL_NAME:Administrator}
   security:
+    password-reset:
+      frontend-url: ${PASSWORD_RESET_FRONTEND_URL:http://localhost:5173/auth}
+      from-address: ${PASSWORD_RESET_FROM:no-reply@lyrashop.local}
+      token-ttl: ${PASSWORD_RESET_TOKEN_TTL:30m}
     cors:
       allowed-origins: ${CORS_ALLOWED_ORIGINS:}
     auth:

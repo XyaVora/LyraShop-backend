@@ -1,0 +1,1 @@
+package com.lyrashop.user.repository; import java.util.*;import org.springframework.data.jpa.repository.JpaRepository;import com.lyrashop.user.entity.LoyaltyTransaction; public interface LoyaltyTransactionRepository extends JpaRepository<LoyaltyTransaction,Long>{List<LoyaltyTransaction> findAllByUserIdOrderByCreatedAtDesc(UUID userId);}

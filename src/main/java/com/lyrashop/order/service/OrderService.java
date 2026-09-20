@@ -35,6 +35,8 @@ import com.lyrashop.cart.service.StorePricing;
 @Service
 public class OrderService {
 
+    private static final BigDecimal GIFT_WRAP_FEE = new BigDecimal("30000.00");
+
     private final ShopOrderRepository orders;
     private final CartRepository carts;
     private final CartItemRepository cartItems;
@@ -43,6 +45,8 @@ public class OrderService {
     private final CategoryRepository categories;
     private final VnpayService vnpay;
     private final PromotionService promotions;
+    private final VoucherService vouchers;
+    private final com.lyrashop.order.repository.TrackingEventRepository trackingEvents;
 
     public OrderService(
             ShopOrderRepository orders,
@@ -52,7 +56,9 @@ public class OrderService {
             ProductRepository products,
             CategoryRepository categories,
             VnpayService vnpay,
-            PromotionService promotions
+            PromotionService promotions,
+            VoucherService vouchers,
+            com.lyrashop.order.repository.TrackingEventRepository trackingEvents
     ) {
         this.orders = orders;
         this.carts = carts;
@@ -62,6 +68,8 @@ public class OrderService {
         this.categories = categories;
         this.vnpay = vnpay;
         this.promotions = promotions;
+        this.vouchers = vouchers;
+        this.trackingEvents = trackingEvents;
     }
 
     @Transactional
@@ -110,6 +118,7 @@ public class OrderService {
             discountedSubtotal = discountedSubtotal.add(itemSubtotal);
             order.addItem(OrderItem.snapshot(
                     variant.getId(),
+                    product.getId(),
                     product.getName(),
                     variant.getSku(),
                     variant.getSize(),
@@ -119,10 +128,16 @@ public class OrderService {
                     itemSubtotal
             ));
         }
-        BigDecimal discount = subtotal.subtract(discountedSubtotal);
-        BigDecimal shipping = StorePricing.shippingFee(discountedSubtotal);
-        order.assignPricing(subtotal, discount, shipping, discountedSubtotal.add(shipping));
+        var voucher = request.voucherCode() == null
+                ? vouchers.noVoucher(discountedSubtotal)
+                : vouchers.quoteForOrder(userId, request.voucherCode(), discountedSubtotal);
+        BigDecimal giftWrapFee = request.giftWrap() ? GIFT_WRAP_FEE : BigDecimal.ZERO.setScale(2);
+        BigDecimal discount = subtotal.subtract(discountedSubtotal).add(voucher.discountAmount());
+        BigDecimal total = voucher.totalAmount().add(giftWrapFee);
+        order.assignGift(request.giftWrap(), request.giftMessage());
+        order.assignPricing(subtotal, discount, voucher.shippingFee(), giftWrapFee, total, voucher.code());
         ShopOrder saved = orders.saveAndFlush(order);
+        vouchers.recordRedemption(userId, voucher.code(), saved.getId());
         cartItems.deleteAllByCartId(cart.getId());
         if (paymentMethod == PaymentMethod.VNPAY) {
             return OrderResponse.from(saved, vnpay.paymentUrl(saved, clientIp));
@@ -189,17 +204,79 @@ public class OrderService {
     }
 
     @Transactional
-    public OrderResponse cancel(UUID userId, UUID orderId) {
+    public OrderResponse cancel(UUID userId, UUID orderId, String reason) {
         ShopOrder order = orders.findForUpdateByUser(orderId, userId)
                 .orElseThrow(OrderNotFoundException::new);
         try {
-            order.cancel();
+            order.cancel(reason);
         } catch (IllegalStateException exception) {
             throw new InvalidOrderStatusException();
         }
         restoreStock(order);
+        vouchers.release(orderId);
         return OrderResponse.from(orders.saveAndFlush(order));
     }
+
+    @Transactional
+    public OrderResponse confirmReceived(UUID userId, UUID orderId) {
+        ShopOrder order = orders.findForUpdateByUser(orderId, userId)
+                .orElseThrow(OrderNotFoundException::new);
+        try {
+            order.confirmReceived();
+        } catch (IllegalStateException exception) {
+            throw new InvalidOrderStatusException();
+        }
+        return OrderResponse.from(orders.saveAndFlush(order));
+    }
+
+    @Transactional
+    public OrderResponse retryPayment(UUID userId, UUID orderId, String clientIp) {
+        ShopOrder order = orders.findForUpdateByUser(orderId, userId)
+                .orElseThrow(OrderNotFoundException::new);
+        if (order.getPaymentMethod() != PaymentMethod.VNPAY
+                || order.getPaymentStatus() == PaymentStatus.PAID
+                || order.getStatus() == OrderStatus.CANCELLED
+                || order.getStatus() == OrderStatus.DELIVERED) {
+            throw new InvalidOrderStatusException();
+        }
+        return OrderResponse.from(order, vnpay.paymentUrl(order, clientIp));
+    }
+
+    @Transactional
+    public OrderResponse requestReturn(UUID userId, UUID orderId, String reason) {
+        ShopOrder order = orders.findForUpdateByUser(orderId, userId)
+                .orElseThrow(OrderNotFoundException::new);
+        try {
+            order.requestReturn(reason);
+        } catch (IllegalStateException exception) {
+            throw new InvalidOrderStatusException();
+        }
+        return OrderResponse.from(orders.saveAndFlush(order));
+    }
+
+    @Transactional
+    public OrderResponse cancelReturn(UUID userId, UUID orderId) {
+        ShopOrder order = orders.findForUpdateByUser(orderId, userId)
+                .orElseThrow(OrderNotFoundException::new);
+        try {
+            order.cancelReturnRequest();
+        } catch (IllegalStateException exception) {
+            throw new InvalidOrderStatusException();
+        }
+        return OrderResponse.from(orders.saveAndFlush(order));
+    }
+
+    @Transactional
+    public OrderResponse updateTracking(UUID orderId, String carrier, String code, String url,
+            java.time.Instant estimatedDeliveryAt) {
+        ShopOrder order = orders.findForUpdate(orderId).orElseThrow(OrderNotFoundException::new);
+        order.assignTracking(carrier, code, url, estimatedDeliveryAt);
+        return OrderResponse.from(orders.saveAndFlush(order));
+    }
+
+    @Transactional(readOnly=true)
+    public List<Map<String,Object>> tracking(UUID userId,UUID orderId){orders.findByIdAndUserId(orderId,userId).orElseThrow(OrderNotFoundException::new);return trackingEvents.findAllByOrderIdOrderByOccurredAtDesc(orderId).stream().map(e->{Map<String,Object> m=new java.util.LinkedHashMap<>();m.put("id",e.getId());m.put("status",e.getStatus());m.put("description",e.getDescription());m.put("location",e.getLocation());m.put("occurredAt",e.getOccurredAt());return m;}).toList();}
+    @Transactional public Map<String,Object> addTrackingEvent(UUID orderId,com.lyrashop.order.dto.TrackingEventRequest r){orders.findById(orderId).orElseThrow(OrderNotFoundException::new);var e=trackingEvents.save(new com.lyrashop.order.entity.TrackingEvent(orderId,r.status(),r.description(),r.location(),r.occurredAt()));return Map.of("id",e.getId(),"status",e.getStatus(),"description",e.getDescription(),"occurredAt",e.getOccurredAt());}
 
     @Transactional
     public OrderResponse updateStatus(UUID orderId, String status) {

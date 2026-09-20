@@ -1,0 +1,1 @@
+package com.lyrashop.user.repository;import java.util.*;import org.springframework.data.jpa.repository.JpaRepository;import com.lyrashop.user.entity.PaymentMethodToken;public interface PaymentMethodRepository extends JpaRepository<PaymentMethodToken,UUID>{List<PaymentMethodToken> findAllByUserId(UUID userId);Optional<PaymentMethodToken> findByIdAndUserId(UUID id,UUID userId);}

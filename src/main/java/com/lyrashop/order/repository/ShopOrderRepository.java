@@ -39,9 +39,7 @@ public interface ShopOrderRepository extends JpaRepository<ShopOrder, UUID> {
             join shopOrder.items item
             where shopOrder.userId = :userId
               and shopOrder.status = com.lyrashop.order.entity.OrderStatus.DELIVERED
-              and item.variantId in (
-                  select variant.id from ProductVariant variant where variant.productId = :productId
-              )
+              and item.productId = :productId
             """)
     boolean hasDeliveredProduct(@Param("userId") UUID userId, @Param("productId") UUID productId);
 
@@ -51,6 +49,8 @@ public interface ShopOrderRepository extends JpaRepository<ShopOrder, UUID> {
             where shopOrder.paymentStatus = com.lyrashop.order.entity.PaymentStatus.PAID
             """)
     BigDecimal sumPaidTotal();
+    @Query("select coalesce(sum(o.totalAmount),0) from ShopOrder o where o.userId=:userId and o.paymentStatus=com.lyrashop.order.entity.PaymentStatus.PAID")
+    BigDecimal sumPaidTotalByUserId(@Param("userId") UUID userId);
 
     @Query("""
             select count(shopOrder)
@@ -67,17 +67,15 @@ public interface ShopOrderRepository extends JpaRepository<ShopOrder, UUID> {
     List<OrderStatusCount> countGroupedByStatus();
 
     @Query("""
-            select variant.productId as productId,
+            select item.productId as productId,
                    min(item.productName) as productName,
                    coalesce(sum(item.quantity), 0) as quantitySold,
                    coalesce(sum(item.subtotal), 0) as revenue
             from ShopOrder shopOrder
             join shopOrder.items item
-            join com.lyrashop.catalog.variant.entity.ProductVariant variant on variant.id = item.variantId
             where shopOrder.status <> com.lyrashop.order.entity.OrderStatus.CANCELLED
-            group by variant.productId
-            order by sum(item.quantity) desc, sum(item.subtotal) desc, variant.productId asc
+            group by item.productId
+            order by sum(item.quantity) desc, sum(item.subtotal) desc, item.productId asc
             """)
     List<BestSellerProjection> findBestSellers(Pageable pageable);
 }
-

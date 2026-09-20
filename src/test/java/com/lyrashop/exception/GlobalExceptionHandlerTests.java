@@ -21,6 +21,8 @@ import org.springframework.security.web.csrf.CsrfTokenRepository;
 import com.lyrashop.auth.controller.AuthController;
 import com.lyrashop.auth.dto.RegisterRequest;
 import com.lyrashop.auth.service.LoginService;
+import com.lyrashop.auth.service.PasswordService;
+import com.lyrashop.auth.service.PasswordResetService;
 import com.lyrashop.auth.service.RefreshCookieService;
 import com.lyrashop.auth.service.RefreshTokenService;
 import com.lyrashop.auth.service.RegistrationService;
@@ -34,13 +36,17 @@ class GlobalExceptionHandlerTests {
     private final RefreshTokenService refreshTokenService = mock(RefreshTokenService.class);
     private final RefreshCookieService refreshCookieService = new RefreshCookieService();
     private final CsrfTokenRepository csrfTokenRepository = mock(CsrfTokenRepository.class);
+    private final PasswordService passwordService = mock(PasswordService.class);
+    private final PasswordResetService passwordResetService = mock(PasswordResetService.class);
     private final MockMvc mockMvc = MockMvcBuilders
             .standaloneSetup(new AuthController(
                     registrationService,
                     loginService,
                     refreshTokenService,
                     refreshCookieService,
-                    csrfTokenRepository
+                    csrfTokenRepository,
+                    passwordService,
+                    passwordResetService
             ))
             .setControllerAdvice(new GlobalExceptionHandler(refreshCookieService))
             .build();

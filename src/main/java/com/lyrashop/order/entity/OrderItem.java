@@ -35,6 +35,10 @@ public class OrderItem {
     @Column(name = "variant_id", nullable = false, updatable = false, length = 16)
     private UUID variantId;
 
+    @JdbcTypeCode(BINARY)
+    @Column(name = "product_id", nullable = false, updatable = false, length = 16)
+    private UUID productId;
+
     @Column(name = "product_name", nullable = false, length = 255)
     private String productName;
 
@@ -63,6 +67,7 @@ public class OrderItem {
 
     private OrderItem(
             UUID variantId,
+            UUID productId,
             String productName,
             String sku,
             String size,
@@ -72,6 +77,7 @@ public class OrderItem {
             BigDecimal subtotal
     ) {
         this.variantId = variantId;
+        this.productId = productId;
         this.productName = productName;
         this.sku = sku;
         this.size = size;
@@ -83,6 +89,7 @@ public class OrderItem {
 
     public static OrderItem snapshot(
             UUID variantId,
+            UUID productId,
             String productName,
             String sku,
             String size,
@@ -91,7 +98,7 @@ public class OrderItem {
             BigDecimal unitPrice,
             BigDecimal subtotal
     ) {
-        return new OrderItem(variantId, productName, sku, size, color, quantity, unitPrice, subtotal);
+        return new OrderItem(variantId, productId, productName, sku, size, color, quantity, unitPrice, subtotal);
     }
 
     void setOrder(ShopOrder order) {
@@ -100,6 +107,7 @@ public class OrderItem {
 
     public Long getId() { return id; }
     public UUID getVariantId() { return variantId; }
+    public UUID getProductId() { return productId; }
     public String getProductName() { return productName; }
     public String getSku() { return sku; }
     public String getSize() { return size; }

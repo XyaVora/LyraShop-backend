@@ -9,12 +9,15 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.lyrashop.order.dto.OrderResponse;
 import com.lyrashop.order.dto.UpdateOrderStatusRequest;
+import com.lyrashop.order.dto.UpdateTrackingRequest;
+import com.lyrashop.order.dto.TrackingEventRequest;
 import com.lyrashop.order.service.OrderNotFoundException;
 import com.lyrashop.order.service.OrderService;
 
@@ -51,6 +54,16 @@ public class AdminOrderController {
     ) {
         return orderService.updateStatus(orderId(id), request.status());
     }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @PutMapping(path = "/{id}/tracking", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    public OrderResponse updateTracking(@PathVariable String id,
+            @Valid @RequestBody UpdateTrackingRequest request) {
+        return orderService.updateTracking(orderId(id), request.carrier(), request.trackingCode(),
+                request.trackingUrl(), request.estimatedDeliveryAt());
+    }
+    @PreAuthorize("hasRole('ADMIN')") @PostMapping(path="/{id}/tracking-events",consumes=MediaType.APPLICATION_JSON_VALUE,produces=MediaType.APPLICATION_JSON_VALUE)
+    public java.util.Map<String,Object> addTracking(@PathVariable String id,@Valid @RequestBody TrackingEventRequest request){return orderService.addTrackingEvent(orderId(id),request);}
 
     private static UUID orderId(String id) {
         try {

@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import com.lyrashop.auth.service.RefreshCookieService;
+import com.lyrashop.auth.service.InvalidPasswordResetTokenException;
 import com.lyrashop.address.service.AddressNotFoundException;
 import com.lyrashop.catalog.product.service.ProductCategoryNotFoundException;
 import com.lyrashop.catalog.product.service.ProductNotFoundException;
@@ -36,6 +37,7 @@ import com.lyrashop.order.service.EmptyCartException;
 import com.lyrashop.order.service.InvalidOrderStatusException;
 import com.lyrashop.order.service.InvalidPaymentMethodException;
 import com.lyrashop.order.service.OrderNotFoundException;
+import com.lyrashop.order.service.InvalidVoucherException;
 import com.lyrashop.cart.service.CartItemNotFoundException;
 import com.lyrashop.cart.service.InsufficientStockException;
 import com.lyrashop.catalog.variant.service.VariantProductNotFoundException;
@@ -337,6 +339,11 @@ public class GlobalExceptionHandler {
                 ));
     }
 
+    @ExceptionHandler(InvalidPasswordResetTokenException.class)
+    ResponseEntity<ApiErrorResponse> handleInvalidPasswordResetToken(InvalidPasswordResetTokenException exception,HttpServletRequest request){
+        return problem(HttpStatus.BAD_REQUEST,ApiErrorResponse.of(400,"INVALID_PASSWORD_RESET_TOKEN","Password reset token is invalid or expired",request.getRequestURI()));
+    }
+
     @ExceptionHandler(AddressNotFoundException.class)
     ResponseEntity<ApiErrorResponse> handleAddressNotFound(
             AddressNotFoundException exception,
@@ -443,6 +450,16 @@ public class GlobalExceptionHandler {
         return problem(HttpStatus.BAD_REQUEST, ApiErrorResponse.of(
                 HttpStatus.BAD_REQUEST.value(), "INVALID_PAYMENT_METHOD", "Payment method is not supported",
                 request.getRequestURI()));
+    }
+
+    @ExceptionHandler(InvalidVoucherException.class)
+    ResponseEntity<ApiErrorResponse> handleInvalidVoucher(
+            InvalidVoucherException exception,
+            HttpServletRequest request
+    ) {
+        return problem(HttpStatus.BAD_REQUEST, ApiErrorResponse.of(
+                HttpStatus.BAD_REQUEST.value(), "INVALID_VOUCHER",
+                "Voucher is invalid or its conditions are not met", request.getRequestURI()));
     }
 
     @ExceptionHandler(InsufficientStockException.class)

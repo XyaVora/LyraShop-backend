@@ -120,8 +120,9 @@ Do not import it into the Docker MySQL used by `local-up`; the API applies
 COD orders stay unpaid until delivered. `VNPAY` is accepted when
 `VNPAY_TMN_CODE`, `VNPAY_HASH_SECRET`, and `VNPAY_RETURN_URL` are set; the
 create-order response then includes `paymentUrl`. VNPay calls
-`GET /api/v1/payments/vnpay/ipn` and the browser returns to
-`GET /api/v1/payments/vnpay/return`.
+`GET /api/v1/payments/vnpay/ipn`. Configure `VNPAY_RETURN_URL` to the
+storefront route `/payment/vnpay/return`; that page forwards the signed query
+parameters to `GET /api/v1/payments/vnpay/return` for server-side verification.
 
 Product images still accept an https URL. Admins can also `POST` multipart
 field `file` to `/api/v1/admin/products/{id}/images` (JPEG, PNG, or WebP, up

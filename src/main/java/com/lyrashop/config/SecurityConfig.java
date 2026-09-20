@@ -45,6 +45,7 @@ import com.lyrashop.user.entity.UserRole;
         BootstrapAdminProperties.class,
         VnpayProperties.class,
         UploadProperties.class
+        ,PasswordResetProperties.class
 })
 public class SecurityConfig {
 
@@ -101,9 +102,11 @@ public class SecurityConfig {
                         .requestMatchers("/error").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/register").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/login").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/auth/forgot-password", "/api/v1/auth/reset-password").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/auth/csrf").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/refresh").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/logout").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/auth/change-password").authenticated()
                         .requestMatchers(
                                 HttpMethod.GET,
                                 "/api/v1/categories",
@@ -124,9 +127,13 @@ public class SecurityConfig {
                         .hasAnyRole(UserRole.CUSTOMER.name(), UserRole.ADMIN.name())
                         .requestMatchers("/api/v1/orders", "/api/v1/orders/**")
                         .hasAnyRole(UserRole.CUSTOMER.name(), UserRole.ADMIN.name())
-                        .requestMatchers("/api/v1/me")
+                        .requestMatchers("/api/v1/vouchers", "/api/v1/vouchers/**")
                         .hasAnyRole(UserRole.CUSTOMER.name(), UserRole.ADMIN.name())
-                        .requestMatchers(HttpMethod.GET, "/api/v1/payments/vnpay/ipn", "/api/v1/payments/vnpay/return")
+                        .requestMatchers("/api/v1/me", "/api/v1/me/**")
+                        .hasAnyRole(UserRole.CUSTOMER.name(), UserRole.ADMIN.name())
+                        .requestMatchers("/api/v1/newsletter/subscriptions").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/payments/vnpay/ipn", "/api/v1/payments/vnpay/return",
+                                "/api/v1/payments/vnpay/status")
                         .permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/products/{productId}/reviews")
                         .hasAnyRole(UserRole.CUSTOMER.name(), UserRole.ADMIN.name())

@@ -20,7 +20,9 @@ import org.springframework.web.bind.annotation.RestController;
 import jakarta.servlet.http.HttpServletRequest;
 
 import com.lyrashop.order.dto.CreateOrderRequest;
+import com.lyrashop.order.dto.CancelOrderRequest;
 import com.lyrashop.order.dto.OrderResponse;
+import com.lyrashop.order.dto.ReturnRequest;
 import com.lyrashop.order.service.OrderNotFoundException;
 import com.lyrashop.order.service.OrderService;
 
@@ -62,9 +64,39 @@ public class OrderController {
 
     @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN')")
     @PutMapping(path = "/{id}/cancel", produces = MediaType.APPLICATION_JSON_VALUE)
-    public OrderResponse cancel(Authentication authentication, @PathVariable String id) {
-        return orderService.cancel(userId(authentication), orderId(id));
+    public OrderResponse cancel(Authentication authentication, @PathVariable String id,
+            @Valid @RequestBody CancelOrderRequest request) {
+        return orderService.cancel(userId(authentication), orderId(id), request.reason());
     }
+
+    @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN')")
+    @PutMapping(path = "/{id}/confirm-received", produces = MediaType.APPLICATION_JSON_VALUE)
+    public OrderResponse confirmReceived(Authentication authentication, @PathVariable String id) {
+        return orderService.confirmReceived(userId(authentication), orderId(id));
+    }
+
+    @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN')")
+    @PostMapping(path = "/{id}/retry-payment", produces = MediaType.APPLICATION_JSON_VALUE)
+    public OrderResponse retryPayment(Authentication authentication, @PathVariable String id,
+            HttpServletRequest request) {
+        return orderService.retryPayment(userId(authentication), orderId(id), request.getRemoteAddr());
+    }
+
+    @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN')")
+    @PostMapping(path = "/{id}/return-request", consumes = MediaType.APPLICATION_JSON_VALUE,
+            produces = MediaType.APPLICATION_JSON_VALUE)
+    public OrderResponse requestReturn(Authentication authentication, @PathVariable String id,
+            @Valid @RequestBody ReturnRequest request) {
+        return orderService.requestReturn(userId(authentication), orderId(id), request.reason());
+    }
+
+    @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN')")
+    @PutMapping(path = "/{id}/return-request/cancel", produces = MediaType.APPLICATION_JSON_VALUE)
+    public OrderResponse cancelReturn(Authentication authentication, @PathVariable String id) {
+        return orderService.cancelReturn(userId(authentication), orderId(id));
+    }
+    @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN')") @GetMapping(path="/{id}/tracking-events",produces=MediaType.APPLICATION_JSON_VALUE)
+    public java.util.List<java.util.Map<String,Object>> tracking(Authentication a,@PathVariable String id){return orderService.tracking(userId(a),orderId(id));}
 
     private static UUID userId(Authentication authentication) {
         return UUID.fromString(authentication.getName());

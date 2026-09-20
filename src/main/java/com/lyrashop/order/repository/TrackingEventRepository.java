@@ -1,0 +1,1 @@
+package com.lyrashop.order.repository;import java.util.*;import org.springframework.data.jpa.repository.JpaRepository;import com.lyrashop.order.entity.TrackingEvent;public interface TrackingEventRepository extends JpaRepository<TrackingEvent,Long>{List<TrackingEvent> findAllByOrderIdOrderByOccurredAtDesc(UUID orderId);}

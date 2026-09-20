@@ -1,0 +1,1 @@
+package com.lyrashop.order.dto;import java.time.Instant;import jakarta.validation.constraints.*;public record TrackingEventRequest(@NotBlank@Size(max=50)String status,@NotBlank@Size(max=500)String description,@Size(max=255)String location,@NotNull Instant occurredAt){}

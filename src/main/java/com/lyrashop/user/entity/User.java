@@ -110,6 +110,10 @@ public class User {
         this.phone = normalizeNullable(phone, "phone", 20);
     }
 
+    public void changePasswordHash(String passwordHash) {
+        this.passwordHash = requireOpaqueText(passwordHash, "passwordHash", 255);
+    }
+
     public UUID getId() {
         return id;
     }

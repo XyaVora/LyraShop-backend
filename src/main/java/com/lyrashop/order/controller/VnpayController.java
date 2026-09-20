@@ -10,15 +10,23 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.lyrashop.order.dto.VnpayIpnResponse;
 import com.lyrashop.order.service.OrderService;
+import com.lyrashop.order.service.VnpayService;
 
 @RestController
 @RequestMapping("/api/v1/payments/vnpay")
 public class VnpayController {
 
     private final OrderService orders;
+    private final VnpayService vnpay;
 
-    public VnpayController(OrderService orders) {
+    public VnpayController(OrderService orders, VnpayService vnpay) {
         this.orders = orders;
+        this.vnpay = vnpay;
+    }
+
+    @GetMapping(path = "/status", produces = MediaType.APPLICATION_JSON_VALUE)
+    public Map<String, Boolean> status() {
+        return Map.of("enabled", vnpay.enabled());
     }
 
     @GetMapping(path = "/ipn", produces = MediaType.APPLICATION_JSON_VALUE)

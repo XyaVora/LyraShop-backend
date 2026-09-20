@@ -1,0 +1,1 @@
+package com.lyrashop.user.repository;import java.util.*;import org.springframework.data.jpa.repository.JpaRepository;import com.lyrashop.user.entity.NewsletterSubscription;public interface NewsletterRepository extends JpaRepository<NewsletterSubscription,UUID>{Optional<NewsletterSubscription> findByEmail(String email);}

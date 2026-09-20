@@ -53,6 +53,10 @@ public class ShopOrder {
     private BigDecimal shippingFee;
 
     @JdbcTypeCode(DECIMAL)
+    @Column(name = "gift_wrap_fee", nullable = false, precision = 12, scale = 2)
+    private BigDecimal giftWrapFee;
+
+    @JdbcTypeCode(DECIMAL)
     @Column(name = "total_amount", nullable = false, precision = 12, scale = 2)
     private BigDecimal totalAmount;
 
@@ -76,6 +80,42 @@ public class ShopOrder {
 
     @Column(name = "note", columnDefinition = "text")
     private String note;
+
+    @Column(name = "voucher_code", length = 30)
+    private String voucherCode;
+
+    @Column(name = "gift_wrap", nullable = false)
+    private boolean giftWrap;
+
+    @Column(name = "gift_message", length = 500)
+    private String giftMessage;
+
+    @Column(name = "cancellation_reason", length = 500)
+    private String cancellationReason;
+
+    @Column(name = "shipping_carrier", length = 100)
+    private String shippingCarrier;
+
+    @Column(name = "tracking_code", length = 100)
+    private String trackingCode;
+
+    @Column(name = "tracking_url", length = 500)
+    private String trackingUrl;
+
+    @Column(name = "estimated_delivery_at")
+    private Instant estimatedDeliveryAt;
+
+    @Column(name = "delivered_at")
+    private Instant deliveredAt;
+
+    @Column(name = "return_status", length = 30)
+    private String returnStatus;
+
+    @Column(name = "return_reason", length = 1000)
+    private String returnReason;
+
+    @Column(name = "return_requested_at")
+    private Instant returnRequestedAt;
 
     @CreationTimestamp(source = SourceType.DB)
     @Column(name = "created_at", nullable = false, updatable = false, columnDefinition = "datetime(6)")
@@ -104,6 +144,7 @@ public class ShopOrder {
         this.subtotalAmount = totalAmount;
         this.discountAmount = BigDecimal.ZERO.setScale(2);
         this.shippingFee = BigDecimal.ZERO.setScale(2);
+        this.giftWrapFee = BigDecimal.ZERO.setScale(2);
         this.status = OrderStatus.PENDING;
         this.paymentMethod = paymentMethod;
         this.paymentStatus = PaymentStatus.UNPAID;
@@ -129,18 +170,30 @@ public class ShopOrder {
     }
 
     public void assignPricing(BigDecimal subtotalAmount, BigDecimal discountAmount,
-            BigDecimal shippingFee, BigDecimal totalAmount) {
+            BigDecimal shippingFee, BigDecimal giftWrapFee, BigDecimal totalAmount, String voucherCode) {
         this.subtotalAmount = subtotalAmount;
         this.discountAmount = discountAmount;
         this.shippingFee = shippingFee;
+        this.giftWrapFee = giftWrapFee;
         this.totalAmount = totalAmount;
+        this.voucherCode = voucherCode;
     }
 
-    public void cancel() {
+    public void assignGift(boolean enabled, String message) {
+        this.giftWrap = enabled;
+        this.giftMessage = enabled ? message : null;
+    }
+
+    public void cancel(String reason) {
         if (status != OrderStatus.PENDING) {
             throw new IllegalStateException("only pending orders can be cancelled");
         }
         status = OrderStatus.CANCELLED;
+        cancellationReason = reason;
+    }
+
+    public void cancel() {
+        cancel("Khách hàng yêu cầu hủy đơn");
     }
 
     public void transitionTo(OrderStatus next) {
@@ -158,6 +211,42 @@ public class ShopOrder {
         if (next == OrderStatus.DELIVERED && paymentMethod == PaymentMethod.COD) {
             paymentStatus = PaymentStatus.PAID;
         }
+        if (next == OrderStatus.DELIVERED) {
+            deliveredAt = Instant.now();
+        }
+    }
+
+    public void confirmReceived() {
+        if (status != OrderStatus.SHIPPING) {
+            throw new IllegalStateException("only shipping orders can be confirmed as received");
+        }
+        transitionTo(OrderStatus.DELIVERED);
+    }
+
+    public void assignTracking(String carrier, String code, String url, Instant estimatedDeliveryAt) {
+        this.shippingCarrier = carrier;
+        this.trackingCode = code;
+        this.trackingUrl = url;
+        this.estimatedDeliveryAt = estimatedDeliveryAt;
+    }
+
+    public void requestReturn(String reason) {
+        if (status != OrderStatus.DELIVERED || returnStatus != null || deliveredAt == null
+                || deliveredAt.isBefore(Instant.now().minus(java.time.Duration.ofDays(30)))) {
+            throw new IllegalStateException("return is not allowed");
+        }
+        returnStatus = "REQUESTED";
+        returnReason = reason;
+        returnRequestedAt = Instant.now();
+    }
+
+    public void cancelReturnRequest() {
+        if (!"REQUESTED".equals(returnStatus)) {
+            throw new IllegalStateException("return request cannot be cancelled");
+        }
+        returnStatus = null;
+        returnReason = null;
+        returnRequestedAt = null;
     }
 
     public void markPaid() {
@@ -173,12 +262,25 @@ public class ShopOrder {
     public BigDecimal getSubtotalAmount() { return subtotalAmount; }
     public BigDecimal getDiscountAmount() { return discountAmount; }
     public BigDecimal getShippingFee() { return shippingFee; }
+    public BigDecimal getGiftWrapFee() { return giftWrapFee; }
     public OrderStatus getStatus() { return status; }
     public PaymentMethod getPaymentMethod() { return paymentMethod; }
     public PaymentStatus getPaymentStatus() { return paymentStatus; }
     public String getShippingAddress() { return shippingAddress; }
     public String getShippingPhone() { return shippingPhone; }
     public String getNote() { return note; }
+    public String getVoucherCode() { return voucherCode; }
+    public boolean isGiftWrap() { return giftWrap; }
+    public String getGiftMessage() { return giftMessage; }
+    public String getCancellationReason() { return cancellationReason; }
+    public String getShippingCarrier() { return shippingCarrier; }
+    public String getTrackingCode() { return trackingCode; }
+    public String getTrackingUrl() { return trackingUrl; }
+    public Instant getEstimatedDeliveryAt() { return estimatedDeliveryAt; }
+    public Instant getDeliveredAt() { return deliveredAt; }
+    public String getReturnStatus() { return returnStatus; }
+    public String getReturnReason() { return returnReason; }
+    public Instant getReturnRequestedAt() { return returnRequestedAt; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
     public List<OrderItem> getItems() { return List.copyOf(items); }
