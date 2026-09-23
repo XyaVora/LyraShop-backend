@@ -18,6 +18,8 @@ import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import com.lyrashop.auth.service.RefreshCookieService;
 import com.lyrashop.auth.service.InvalidPasswordResetTokenException;
+import com.lyrashop.auth.service.InvalidEmailVerificationTokenException;
+import com.lyrashop.auth.service.EmailNotVerifiedException;
 import com.lyrashop.address.service.AddressNotFoundException;
 import com.lyrashop.catalog.product.service.ProductCategoryNotFoundException;
 import com.lyrashop.catalog.product.service.ProductNotFoundException;
@@ -31,6 +33,7 @@ import com.lyrashop.review.service.ReviewAlreadyExistsException;
 import com.lyrashop.review.service.ReviewNotAllowedException;
 import com.lyrashop.review.service.ReviewNotFoundException;
 import com.lyrashop.user.service.InvalidProfileDataException;
+import com.lyrashop.user.service.InvalidNewsletterTokenException;
 import com.lyrashop.user.service.LastAdminException;
 import com.lyrashop.user.service.UserNotFoundException;
 import com.lyrashop.order.service.EmptyCartException;
@@ -38,6 +41,8 @@ import com.lyrashop.order.service.InvalidOrderStatusException;
 import com.lyrashop.order.service.InvalidPaymentMethodException;
 import com.lyrashop.order.service.OrderNotFoundException;
 import com.lyrashop.order.service.InvalidVoucherException;
+import com.lyrashop.order.service.InvalidIdempotencyKeyException;
+import com.lyrashop.user.service.InvalidLoyaltyRedemptionException;
 import com.lyrashop.cart.service.CartItemNotFoundException;
 import com.lyrashop.cart.service.InsufficientStockException;
 import com.lyrashop.catalog.variant.service.VariantProductNotFoundException;
@@ -344,6 +349,21 @@ public class GlobalExceptionHandler {
         return problem(HttpStatus.BAD_REQUEST,ApiErrorResponse.of(400,"INVALID_PASSWORD_RESET_TOKEN","Password reset token is invalid or expired",request.getRequestURI()));
     }
 
+    @ExceptionHandler(InvalidEmailVerificationTokenException.class)
+    ResponseEntity<ApiErrorResponse> handleInvalidEmailVerificationToken(InvalidEmailVerificationTokenException exception,HttpServletRequest request){
+        return problem(HttpStatus.BAD_REQUEST,ApiErrorResponse.of(400,"INVALID_EMAIL_VERIFICATION_TOKEN","Email verification token is invalid or expired",request.getRequestURI()));
+    }
+
+    @ExceptionHandler(EmailNotVerifiedException.class)
+    ResponseEntity<ApiErrorResponse> handleEmailNotVerified(EmailNotVerifiedException exception,HttpServletRequest request){
+        return problem(HttpStatus.FORBIDDEN,ApiErrorResponse.of(403,"EMAIL_NOT_VERIFIED","Email address has not been verified",request.getRequestURI()));
+    }
+
+    @ExceptionHandler(InvalidNewsletterTokenException.class)
+    ResponseEntity<ApiErrorResponse> handleInvalidNewsletterToken(InvalidNewsletterTokenException exception,HttpServletRequest request){
+        return problem(HttpStatus.BAD_REQUEST,ApiErrorResponse.of(400,"INVALID_NEWSLETTER_TOKEN","Newsletter token is invalid or expired",request.getRequestURI()));
+    }
+
     @ExceptionHandler(AddressNotFoundException.class)
     ResponseEntity<ApiErrorResponse> handleAddressNotFound(
             AddressNotFoundException exception,
@@ -460,6 +480,23 @@ public class GlobalExceptionHandler {
         return problem(HttpStatus.BAD_REQUEST, ApiErrorResponse.of(
                 HttpStatus.BAD_REQUEST.value(), "INVALID_VOUCHER",
                 "Voucher is invalid or its conditions are not met", request.getRequestURI()));
+    }
+
+    @ExceptionHandler(InvalidIdempotencyKeyException.class)
+    ResponseEntity<ApiErrorResponse> handleInvalidIdempotencyKey(
+            InvalidIdempotencyKeyException exception, HttpServletRequest request) {
+        return problem(HttpStatus.BAD_REQUEST, ApiErrorResponse.of(
+                HttpStatus.BAD_REQUEST.value(), "INVALID_IDEMPOTENCY_KEY",
+                "Idempotency key is invalid", request.getRequestURI()));
+    }
+
+    @ExceptionHandler(InvalidLoyaltyRedemptionException.class)
+    ResponseEntity<ApiErrorResponse> handleInvalidLoyaltyRedemption(
+            InvalidLoyaltyRedemptionException exception, HttpServletRequest request) {
+        return problem(HttpStatus.BAD_REQUEST, ApiErrorResponse.of(
+                HttpStatus.BAD_REQUEST.value(), "INVALID_LOYALTY_REDEMPTION",
+                "Loyalty coin amount exceeds the available balance or redemption limit",
+                request.getRequestURI()));
     }
 
     @ExceptionHandler(InsufficientStockException.class)

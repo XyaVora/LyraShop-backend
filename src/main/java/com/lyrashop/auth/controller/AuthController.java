@@ -23,6 +23,7 @@ import com.lyrashop.auth.dto.ResetPasswordRequest;
 import com.lyrashop.auth.dto.LoginResponse;
 import com.lyrashop.auth.dto.RegisterRequest;
 import com.lyrashop.auth.dto.RegisterResponse;
+import com.lyrashop.auth.dto.VerifyEmailRequest;
 import com.lyrashop.auth.service.IssuedAuthentication;
 import com.lyrashop.auth.service.LoginService;
 import com.lyrashop.auth.service.PasswordService;
@@ -30,6 +31,7 @@ import com.lyrashop.auth.service.PasswordResetService;
 import com.lyrashop.auth.service.RefreshCookieService;
 import com.lyrashop.auth.service.RefreshTokenService;
 import com.lyrashop.auth.service.RegistrationService;
+import com.lyrashop.auth.service.EmailVerificationService;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -49,6 +51,7 @@ public class AuthController {
     private final CsrfTokenRepository csrfTokenRepository;
     private final PasswordService passwordService;
     private final PasswordResetService passwordResetService;
+    private final EmailVerificationService emailVerificationService;
 
     public AuthController(
             RegistrationService registrationService,
@@ -57,7 +60,8 @@ public class AuthController {
             RefreshCookieService refreshCookieService,
             CsrfTokenRepository csrfTokenRepository,
             PasswordService passwordService,
-            PasswordResetService passwordResetService
+            PasswordResetService passwordResetService,
+            EmailVerificationService emailVerificationService
     ) {
         this.registrationService = registrationService;
         this.loginService = loginService;
@@ -66,6 +70,7 @@ public class AuthController {
         this.csrfTokenRepository = csrfTokenRepository;
         this.passwordService = passwordService;
         this.passwordResetService = passwordResetService;
+        this.emailVerificationService = emailVerificationService;
     }
 
     @PostMapping(
@@ -164,6 +169,18 @@ public class AuthController {
     public ResponseEntity<Void> resetPassword(@Valid @RequestBody ResetPasswordRequest request){
         passwordResetService.reset(request.token(),request.newPassword());
         return ResponseEntity.noContent().header(HttpHeaders.CACHE_CONTROL,"no-store").build();
+    }
+
+    @PostMapping(path="/verify-email", consumes=MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<Void> verifyEmail(@Valid @RequestBody VerifyEmailRequest request){
+        emailVerificationService.verify(request.token());
+        return ResponseEntity.noContent().header(HttpHeaders.CACHE_CONTROL,"no-store").build();
+    }
+
+    @PostMapping(path="/resend-verification", consumes=MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<Void> resendVerification(@Valid @RequestBody ForgotPasswordRequest request){
+        emailVerificationService.resend(request.email());
+        return ResponseEntity.accepted().header(HttpHeaders.CACHE_CONTROL,"no-store").build();
     }
 
     private ResponseEntity.BodyBuilder tokenResponse(IssuedAuthentication authentication) {

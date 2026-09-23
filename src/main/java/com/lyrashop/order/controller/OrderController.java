@@ -16,6 +16,9 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.web.multipart.MultipartFile;
 
 import jakarta.servlet.http.HttpServletRequest;
 
@@ -23,8 +26,10 @@ import com.lyrashop.order.dto.CreateOrderRequest;
 import com.lyrashop.order.dto.CancelOrderRequest;
 import com.lyrashop.order.dto.OrderResponse;
 import com.lyrashop.order.dto.ReturnRequest;
+import com.lyrashop.order.dto.ReturnRequestResponse;
 import com.lyrashop.order.service.OrderNotFoundException;
 import com.lyrashop.order.service.OrderService;
+import com.lyrashop.order.service.ReturnEvidenceUploadService;
 
 import jakarta.validation.Valid;
 
@@ -34,9 +39,11 @@ import jakarta.validation.Valid;
 public class OrderController {
 
     private final OrderService orderService;
+    private final ReturnEvidenceUploadService evidenceUploads;
 
-    public OrderController(OrderService orderService) {
+    public OrderController(OrderService orderService, ReturnEvidenceUploadService evidenceUploads) {
         this.orderService = orderService;
+        this.evidenceUploads = evidenceUploads;
     }
 
     @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN')")
@@ -50,10 +57,21 @@ public class OrderController {
     public ResponseEntity<OrderResponse> create(
             Authentication authentication,
             @Valid @RequestBody CreateOrderRequest request,
+            @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey,
             HttpServletRequest httpRequest
     ) {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(orderService.create(userId(authentication), request, httpRequest.getRemoteAddr()));
+                .body(orderService.create(userId(authentication), request, httpRequest.getRemoteAddr(), idempotencyKey));
+    }
+
+    @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN')")
+    @PostMapping(path = "/return-evidence", consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
+            produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<java.util.Map<String, String>> uploadReturnEvidence(
+            Authentication authentication,
+            @RequestPart("file") MultipartFile file
+    ) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(java.util.Map.of("url", evidenceUploads.store(userId(authentication), file)));
     }
 
     @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN')")
@@ -87,7 +105,13 @@ public class OrderController {
             produces = MediaType.APPLICATION_JSON_VALUE)
     public OrderResponse requestReturn(Authentication authentication, @PathVariable String id,
             @Valid @RequestBody ReturnRequest request) {
-        return orderService.requestReturn(userId(authentication), orderId(id), request.reason());
+        return orderService.requestReturn(userId(authentication), orderId(id), request);
+    }
+
+    @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN')")
+    @GetMapping(path = "/{id}/return-request", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ReturnRequestResponse getReturnRequest(Authentication authentication, @PathVariable String id) {
+        return orderService.getReturnRequest(userId(authentication), orderId(id));
     }
 
     @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN')")

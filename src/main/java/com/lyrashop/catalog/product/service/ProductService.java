@@ -31,6 +31,7 @@ import com.lyrashop.catalog.product.dto.AdminProductResponse;
 import com.lyrashop.catalog.product.dto.CreateProductRequest;
 import com.lyrashop.catalog.product.dto.UpdateProductRequest;
 import com.lyrashop.catalog.product.dto.ProductResponse;
+import com.lyrashop.catalog.product.dto.ProductFacetsResponse;
 import com.lyrashop.catalog.product.entity.Product;
 import com.lyrashop.catalog.product.entity.ProductImage;
 import com.lyrashop.catalog.product.repository.ProductImageRepository;
@@ -285,6 +286,11 @@ public class ProductService {
                         .thenComparing(ProductResult::createdAt, Comparator.reverseOrder()))
                 .limit(limit)
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public ProductFacetsResponse facets() {
+        return new ProductFacetsResponse(variants.findPublicColors(), variants.findPublicSizes());
     }
 
     @Transactional(readOnly = true)

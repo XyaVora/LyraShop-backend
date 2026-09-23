@@ -37,6 +37,9 @@ class ProductImageStorageTests {
                 "file", "shirt.png", "image/png", PNG
         ));
         assertThat(pngUrl).endsWith(".png");
+        storage.delete(pngUrl);
+        assertThatThrownBy(() -> storage.load(pngUrl.substring("/api/v1/files/".length())))
+                .isInstanceOf(InvalidProductImageException.class);
 
         assertThatThrownBy(() -> storage.store(new MockMultipartFile(
                 "file", "shirt.jpg", "text/plain", JPEG

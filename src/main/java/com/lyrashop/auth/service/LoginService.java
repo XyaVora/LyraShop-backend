@@ -66,6 +66,7 @@ public class LoginService {
                 || !user.isActive()) {
             throw new InvalidCredentialsException();
         }
+        if (!user.isEmailVerified()) throw new EmailNotVerifiedException();
         return refreshTokenService.issueInitial(user.getId());
     }
 

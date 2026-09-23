@@ -26,6 +26,7 @@ import com.lyrashop.auth.service.PasswordResetService;
 import com.lyrashop.auth.service.RefreshCookieService;
 import com.lyrashop.auth.service.RefreshTokenService;
 import com.lyrashop.auth.service.RegistrationService;
+import com.lyrashop.auth.service.EmailVerificationService;
 
 import jakarta.servlet.http.Cookie;
 
@@ -38,6 +39,7 @@ class GlobalExceptionHandlerTests {
     private final CsrfTokenRepository csrfTokenRepository = mock(CsrfTokenRepository.class);
     private final PasswordService passwordService = mock(PasswordService.class);
     private final PasswordResetService passwordResetService = mock(PasswordResetService.class);
+    private final EmailVerificationService emailVerificationService = mock(EmailVerificationService.class);
     private final MockMvc mockMvc = MockMvcBuilders
             .standaloneSetup(new AuthController(
                     registrationService,
@@ -46,7 +48,8 @@ class GlobalExceptionHandlerTests {
                     refreshCookieService,
                     csrfTokenRepository,
                     passwordService,
-                    passwordResetService
+                    passwordResetService,
+                    emailVerificationService
             ))
             .setControllerAdvice(new GlobalExceptionHandler(refreshCookieService))
             .build();

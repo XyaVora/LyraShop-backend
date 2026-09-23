@@ -44,4 +44,20 @@ public interface ProductVariantRepository extends JpaRepository<ProductVariant, 
     List<ProductVariant> findAllByProductIdInAndActiveTrueOrderByProductIdAscSkuAscIdAsc(List<UUID> productIds);
 
     boolean existsBySkuAndIdNot(String sku, UUID id);
+
+    @Query("""
+            select distinct variant.color from ProductVariant variant, Product product, Category category
+            where product.id = variant.productId and category.id = product.categoryId
+              and variant.active = true and variant.stock > 0 and product.active = true and category.active = true
+            order by variant.color
+            """)
+    List<String> findPublicColors();
+
+    @Query("""
+            select distinct variant.size from ProductVariant variant, Product product, Category category
+            where product.id = variant.productId and category.id = product.categoryId
+              and variant.active = true and variant.stock > 0 and product.active = true and category.active = true
+            order by variant.size
+            """)
+    List<String> findPublicSizes();
 }

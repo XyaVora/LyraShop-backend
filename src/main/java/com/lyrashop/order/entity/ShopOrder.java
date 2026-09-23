@@ -40,6 +40,9 @@ public class ShopOrder {
     @Column(name = "user_id", nullable = false, updatable = false, length = 16)
     private UUID userId;
 
+    @Column(name = "idempotency_key", length = 64)
+    private String idempotencyKey;
+
     @JdbcTypeCode(DECIMAL)
     @Column(name = "subtotal_amount", nullable = false, precision = 12, scale = 2)
     private BigDecimal subtotalAmount;
@@ -47,6 +50,13 @@ public class ShopOrder {
     @JdbcTypeCode(DECIMAL)
     @Column(name = "discount_amount", nullable = false, precision = 12, scale = 2)
     private BigDecimal discountAmount;
+
+    @Column(name = "loyalty_coins_used", nullable = false)
+    private long loyaltyCoinsUsed;
+
+    @JdbcTypeCode(DECIMAL)
+    @Column(name = "loyalty_discount_amount", nullable = false, precision = 12, scale = 2)
+    private BigDecimal loyaltyDiscountAmount;
 
     @JdbcTypeCode(DECIMAL)
     @Column(name = "shipping_fee", nullable = false, precision = 12, scale = 2)
@@ -108,6 +118,9 @@ public class ShopOrder {
     @Column(name = "delivered_at")
     private Instant deliveredAt;
 
+    @Column(name = "expires_at")
+    private Instant expiresAt;
+
     @Column(name = "return_status", length = 30)
     private String returnStatus;
 
@@ -143,6 +156,7 @@ public class ShopOrder {
         this.totalAmount = totalAmount;
         this.subtotalAmount = totalAmount;
         this.discountAmount = BigDecimal.ZERO.setScale(2);
+        this.loyaltyDiscountAmount = BigDecimal.ZERO.setScale(2);
         this.shippingFee = BigDecimal.ZERO.setScale(2);
         this.giftWrapFee = BigDecimal.ZERO.setScale(2);
         this.status = OrderStatus.PENDING;
@@ -169,6 +183,14 @@ public class ShopOrder {
         item.setOrder(this);
     }
 
+    public void assignIdempotencyKey(String value) {
+        this.idempotencyKey = value;
+    }
+
+    public void assignExpiration(Instant value) {
+        this.expiresAt = value;
+    }
+
     public void assignPricing(BigDecimal subtotalAmount, BigDecimal discountAmount,
             BigDecimal shippingFee, BigDecimal giftWrapFee, BigDecimal totalAmount, String voucherCode) {
         this.subtotalAmount = subtotalAmount;
@@ -182,6 +204,16 @@ public class ShopOrder {
     public void assignGift(boolean enabled, String message) {
         this.giftWrap = enabled;
         this.giftMessage = enabled ? message : null;
+    }
+
+    public void applyLoyalty(long coins) {
+        if (coins < 0) throw new IllegalArgumentException("loyalty coins must be non-negative");
+        BigDecimal amount = BigDecimal.valueOf(coins).setScale(2);
+        if (amount.compareTo(totalAmount) > 0) throw new IllegalArgumentException("loyalty discount exceeds total");
+        this.loyaltyCoinsUsed = coins;
+        this.loyaltyDiscountAmount = amount;
+        this.discountAmount = this.discountAmount.add(amount);
+        this.totalAmount = this.totalAmount.subtract(amount);
     }
 
     public void cancel(String reason) {
@@ -204,10 +236,19 @@ public class ShopOrder {
             case SHIPPING -> OrderStatus.DELIVERED;
             default -> null;
         };
+        if (status == OrderStatus.PENDING
+                && next == OrderStatus.CONFIRMED
+                && paymentMethod != PaymentMethod.COD
+                && paymentStatus != PaymentStatus.PAID) {
+            throw new IllegalStateException("online payment must be completed before confirmation");
+        }
         if (expected == null || next != expected) {
             throw new IllegalStateException("invalid order status transition");
         }
         status = next;
+        if (next == OrderStatus.CONFIRMED) {
+            expiresAt = null;
+        }
         if (next == OrderStatus.DELIVERED && paymentMethod == PaymentMethod.COD) {
             paymentStatus = PaymentStatus.PAID;
         }
@@ -256,11 +297,25 @@ public class ShopOrder {
         paymentStatus = PaymentStatus.PAID;
     }
 
+    public boolean isExpired(Instant now) {
+        return status == OrderStatus.PENDING && expiresAt != null && !expiresAt.isAfter(now);
+    }
+
+    public void expire(Instant now) {
+        if (!isExpired(now)) throw new IllegalStateException("order is not expired");
+        status = OrderStatus.CANCELLED;
+        cancellationReason = "Đơn hàng tự động hết hạn";
+        expiresAt = null;
+    }
+
     public UUID getId() { return id; }
     public UUID getUserId() { return userId; }
+    public String getIdempotencyKey() { return idempotencyKey; }
     public BigDecimal getTotalAmount() { return totalAmount; }
     public BigDecimal getSubtotalAmount() { return subtotalAmount; }
     public BigDecimal getDiscountAmount() { return discountAmount; }
+    public long getLoyaltyCoinsUsed() { return loyaltyCoinsUsed; }
+    public BigDecimal getLoyaltyDiscountAmount() { return loyaltyDiscountAmount; }
     public BigDecimal getShippingFee() { return shippingFee; }
     public BigDecimal getGiftWrapFee() { return giftWrapFee; }
     public OrderStatus getStatus() { return status; }
@@ -278,6 +333,7 @@ public class ShopOrder {
     public String getTrackingUrl() { return trackingUrl; }
     public Instant getEstimatedDeliveryAt() { return estimatedDeliveryAt; }
     public Instant getDeliveredAt() { return deliveredAt; }
+    public Instant getExpiresAt() { return expiresAt; }
     public String getReturnStatus() { return returnStatus; }
     public String getReturnReason() { return returnReason; }
     public Instant getReturnRequestedAt() { return returnRequestedAt; }

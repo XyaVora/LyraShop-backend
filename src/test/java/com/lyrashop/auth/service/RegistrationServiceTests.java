@@ -33,8 +33,9 @@ class RegistrationServiceTests {
     private final UserRepository userRepository = mock(UserRepository.class);
     private final BoundedPasswordOperations passwordOperations =
             mock(BoundedPasswordOperations.class);
+    private final EmailVerificationService emailVerificationService = mock(EmailVerificationService.class);
     private final RegistrationService registrationService =
-            new RegistrationService(userRepository, passwordOperations);
+            new RegistrationService(userRepository, passwordOperations, emailVerificationService);
 
     @Test
     void mapsOnlyTheEmailUniqueConstraintToAConflict() {

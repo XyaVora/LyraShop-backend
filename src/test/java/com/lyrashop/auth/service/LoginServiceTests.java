@@ -108,6 +108,18 @@ class LoginServiceTests {
     }
 
     @Test
+    void verifiedCredentialsCannotLoginBeforeEmailVerification() {
+        User user = activeUser();
+        when(user.isEmailVerified()).thenReturn(false);
+        when(userRepository.findByEmail("customer@example.com")).thenReturn(Optional.of(user));
+        when(passwordOperations.matches(RAW_PASSWORD, STORED_HASH)).thenReturn(true);
+
+        assertThatThrownBy(() -> loginService.login(new LoginRequest("customer@example.com", RAW_PASSWORD)))
+                .isInstanceOf(EmailNotVerifiedException.class);
+        verifyNoInteractions(refreshTokenService);
+    }
+
+    @Test
     void rejectsOversizedPasswordAfterOneBoundedComparison() {
         User user = activeUser();
         String oversizedPassword = "x".repeat(73);
@@ -183,6 +195,7 @@ class LoginServiceTests {
         when(user.getId()).thenReturn(UUID.randomUUID());
         when(user.getPasswordHash()).thenReturn(STORED_HASH);
         when(user.isActive()).thenReturn(true);
+        when(user.isEmailVerified()).thenReturn(true);
         return user;
     }
 

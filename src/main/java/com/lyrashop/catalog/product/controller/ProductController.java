@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.lyrashop.catalog.product.dto.ProductDetailResponse;
 import com.lyrashop.catalog.product.dto.ProductPageResponse;
 import com.lyrashop.catalog.product.dto.ProductResponse;
+import com.lyrashop.catalog.product.dto.ProductFacetsResponse;
 import com.lyrashop.catalog.product.service.ProductNotFoundException;
 import com.lyrashop.catalog.product.service.ProductQuery;
 import com.lyrashop.catalog.product.service.ProductService;
@@ -63,6 +64,11 @@ public class ProductController {
     @GetMapping(path = "/featured", produces = MediaType.APPLICATION_JSON_VALUE)
     public List<ProductResponse> featured(@RequestParam(defaultValue = "8") int size) {
         return productService.publicResponses(productService.featured(size));
+    }
+
+    @GetMapping(path = "/facets", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ProductFacetsResponse facets() {
+        return productService.facets();
     }
 
     @GetMapping(path = "/{id}/related", produces = MediaType.APPLICATION_JSON_VALUE)

@@ -86,6 +86,19 @@ public class ProductImageStorage {
         return new FileSystemResource(target);
     }
 
+    public void delete(String url) {
+        if (url == null || !url.startsWith("/api/v1/files/")) throw new InvalidProductImageException();
+        String filename = url.substring("/api/v1/files/".length()).toLowerCase(Locale.ROOT);
+        if (!filename.matches("[0-9a-f-]{36}\\.(jpg|png|webp)")) throw new InvalidProductImageException();
+        Path target = properties.directoryPath().resolve(filename).normalize();
+        if (!target.startsWith(properties.directoryPath())) throw new InvalidProductImageException();
+        try {
+            Files.deleteIfExists(target);
+        } catch (IOException exception) {
+            throw new IllegalStateException("Unable to delete uploaded image", exception);
+        }
+    }
+
     private static boolean matchesMagic(String extension, byte[] header) {
         return switch (extension) {
             case "jpg" -> header.length >= 3

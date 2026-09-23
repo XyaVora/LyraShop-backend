@@ -30,13 +30,16 @@ public class RegistrationService {
 
     private final UserRepository userRepository;
     private final BoundedPasswordOperations passwordOperations;
+    private final EmailVerificationService emailVerificationService;
 
     public RegistrationService(
             UserRepository userRepository,
-            BoundedPasswordOperations passwordOperations
+            BoundedPasswordOperations passwordOperations,
+            EmailVerificationService emailVerificationService
     ) {
         this.userRepository = userRepository;
         this.passwordOperations = passwordOperations;
+        this.emailVerificationService = emailVerificationService;
     }
 
     public RegistrationResult register(@NotNull @Valid RegisterRequest request) {
@@ -52,7 +55,7 @@ public class RegistrationService {
             throw new EmailAlreadyRegisteredException();
         }
 
-        User user = User.createCustomer(
+        User user = User.createUnverifiedCustomer(
                 canonicalEmail,
                 passwordHash,
                 request.fullName(),
@@ -60,7 +63,9 @@ public class RegistrationService {
         );
 
         try {
-            return RegistrationResult.from(userRepository.saveAndFlush(user));
+            User saved = userRepository.saveAndFlush(user);
+            emailVerificationService.issue(saved, false);
+            return RegistrationResult.from(saved);
         } catch (DataIntegrityViolationException exception) {
             if (isEmailUniqueViolation(exception)) {
                 throw new EmailAlreadyRegisteredException(exception);

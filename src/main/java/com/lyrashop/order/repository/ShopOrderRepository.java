@@ -25,6 +25,11 @@ public interface ShopOrderRepository extends JpaRepository<ShopOrder, UUID> {
 
     Optional<ShopOrder> findByIdAndUserId(UUID id, UUID userId);
 
+    Optional<ShopOrder> findByUserIdAndIdempotencyKey(UUID userId, String idempotencyKey);
+
+    @Query("select o.id from ShopOrder o where o.status = com.lyrashop.order.entity.OrderStatus.PENDING and o.expiresAt <= :now order by o.expiresAt, o.id")
+    List<UUID> findExpiredPendingIds(@Param("now") java.time.Instant now, Pageable pageable);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select shopOrder from ShopOrder shopOrder where shopOrder.id = :id")
     Optional<ShopOrder> findForUpdate(@Param("id") UUID id);
@@ -49,7 +54,7 @@ public interface ShopOrderRepository extends JpaRepository<ShopOrder, UUID> {
             where shopOrder.paymentStatus = com.lyrashop.order.entity.PaymentStatus.PAID
             """)
     BigDecimal sumPaidTotal();
-    @Query("select coalesce(sum(o.totalAmount),0) from ShopOrder o where o.userId=:userId and o.paymentStatus=com.lyrashop.order.entity.PaymentStatus.PAID")
+    @Query("select coalesce(sum(o.totalAmount),0) from ShopOrder o where o.userId=:userId and o.paymentStatus=com.lyrashop.order.entity.PaymentStatus.PAID and o.status<>com.lyrashop.order.entity.OrderStatus.CANCELLED")
     BigDecimal sumPaidTotalByUserId(@Param("userId") UUID userId);
 
     @Query("""

@@ -64,6 +64,9 @@ public class User {
     @Column(name = "is_active", nullable = false, columnDefinition = "boolean")
     private boolean active;
 
+    @Column(name = "email_verified", nullable = false, columnDefinition = "boolean")
+    private boolean emailVerified;
+
     @Version
     @Column(name = "version", nullable = false)
     private long version;
@@ -86,10 +89,17 @@ public class User {
         this.phone = normalizeNullable(phone, "phone", 20);
         this.role = UserRole.CUSTOMER;
         this.active = true;
+        this.emailVerified = true;
     }
 
     public static User createCustomer(String email, String passwordHash, String fullName, String phone) {
         return new User(email, passwordHash, fullName, phone);
+    }
+
+    public static User createUnverifiedCustomer(String email, String passwordHash, String fullName, String phone) {
+        User user = new User(email, passwordHash, fullName, phone);
+        user.emailVerified = false;
+        return user;
     }
 
     public static User createAdmin(String email, String passwordHash, String fullName, String phone) {
@@ -141,6 +151,10 @@ public class User {
     public boolean isActive() {
         return active;
     }
+
+    public boolean isEmailVerified() { return emailVerified; }
+
+    public void verifyEmail() { emailVerified = true; }
 
     public void deactivate() {
         active = false;

@@ -39,6 +39,7 @@ import com.lyrashop.auth.service.PasswordResetService;
 import com.lyrashop.auth.service.RefreshCookieService;
 import com.lyrashop.auth.service.RefreshTokenService;
 import com.lyrashop.auth.service.RegistrationService;
+import com.lyrashop.auth.service.EmailVerificationService;
 
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
@@ -55,6 +56,7 @@ class AuthControllerTests {
     private final CsrfTokenRepository csrfTokenRepository = mock(CsrfTokenRepository.class);
     private final PasswordService passwordService = mock(PasswordService.class);
     private final PasswordResetService passwordResetService = mock(PasswordResetService.class);
+    private final EmailVerificationService emailVerificationService = mock(EmailVerificationService.class);
     private final CsrfToken csrfToken = new DefaultCsrfToken(
             RefreshCookieService.XSRF_HEADER_NAME,
             "_csrf",
@@ -67,7 +69,8 @@ class AuthControllerTests {
             refreshCookieService,
             csrfTokenRepository,
             passwordService,
-            passwordResetService
+            passwordResetService,
+            emailVerificationService
     )).build();
 
     @BeforeEach
