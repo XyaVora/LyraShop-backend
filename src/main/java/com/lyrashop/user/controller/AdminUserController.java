@@ -5,6 +5,7 @@ import java.util.UUID;
 
 import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -20,6 +21,9 @@ import com.lyrashop.user.entity.User;
 import com.lyrashop.user.repository.UserRepository;
 import com.lyrashop.user.service.UserNotFoundException;
 import com.lyrashop.user.service.UserRoleService;
+import com.lyrashop.user.service.LastAdminException;
+import com.lyrashop.user.service.SelfAdminMutationException;
+import com.lyrashop.user.entity.UserRole;
 
 import jakarta.validation.Valid;
 
@@ -45,6 +49,7 @@ public class AdminUserController {
     @PreAuthorize("hasRole('ADMIN')")
     @PutMapping(path = "/{id}/status", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public AdminUserResponse updateStatus(
+            Authentication authentication,
             @PathVariable String id,
             @Valid @RequestBody UpdateUserStatusRequest request
     ) {
@@ -54,7 +59,14 @@ public class AdminUserController {
         } catch (IllegalArgumentException exception) {
             throw new UserNotFoundException();
         }
+        if (userId.equals(UUID.fromString(authentication.getName()))) {
+            throw new SelfAdminMutationException();
+        }
         User user = users.findById(userId).orElseThrow(UserNotFoundException::new);
+        if (!Boolean.TRUE.equals(request.active()) && user.getRole() == UserRole.ADMIN
+                && user.isActive() && users.countByRoleAndActiveTrue(UserRole.ADMIN) <= 1) {
+            throw new LastAdminException();
+        }
         if (Boolean.TRUE.equals(request.active())) {
             user.activate();
         } else {
@@ -66,6 +78,7 @@ public class AdminUserController {
     @PreAuthorize("hasRole('ADMIN')")
     @PutMapping(path = "/{id}/role", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public AdminUserResponse updateRole(
+            Authentication authentication,
             @PathVariable String id,
             @Valid @RequestBody UpdateUserRoleRequest request
     ) {
@@ -74,6 +87,9 @@ public class AdminUserController {
             userId = UUID.fromString(id);
         } catch (IllegalArgumentException exception) {
             throw new UserNotFoundException();
+        }
+        if (userId.equals(UUID.fromString(authentication.getName()))) {
+            throw new SelfAdminMutationException();
         }
         return AdminUserResponse.from(userRoleService.assignRole(userId, request.role()));
     }

@@ -11,11 +11,13 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
 
 @Entity
 @Table(name = "vouchers")
 public class Voucher {
-    @Id @JdbcTypeCode(SqlTypes.BINARY)
+    @Id @GeneratedValue(strategy = GenerationType.UUID) @JdbcTypeCode(SqlTypes.BINARY)
     @Column(nullable = false, updatable = false, length = 16)
     private UUID id;
     @Column(nullable = false, updatable = false, length = 30) private String code;
@@ -33,6 +35,13 @@ public class Voucher {
 
     protected Voucher() {}
 
+    public static Voucher create(String code,String label,String type,String discountType,BigDecimal discountValue,
+            BigDecimal maxDiscountAmount,BigDecimal minimumOrderAmount,Instant startsAt,Instant endsAt,
+            Integer totalUsageLimit,int perUserLimit,boolean active){Voucher v=new Voucher();v.code=code;v.update(label,type,discountType,discountValue,maxDiscountAmount,minimumOrderAmount,startsAt,endsAt,totalUsageLimit,perUserLimit,active);return v;}
+    public void update(String label,String type,String discountType,BigDecimal discountValue,BigDecimal maxDiscountAmount,
+            BigDecimal minimumOrderAmount,Instant startsAt,Instant endsAt,Integer totalUsageLimit,int perUserLimit,boolean active){this.label=label;this.type=type;this.discountType=discountType;this.discountValue=discountValue;this.maxDiscountAmount=maxDiscountAmount;this.minimumOrderAmount=minimumOrderAmount;this.startsAt=startsAt;this.endsAt=endsAt;this.totalUsageLimit=totalUsageLimit;this.perUserLimit=perUserLimit;this.active=active;}
+    public void deactivate(){active=false;}
+
     public UUID getId() { return id; }
     public String getCode() { return code; }
     public String getLabel() { return label; }
@@ -41,7 +50,9 @@ public class Voucher {
     public BigDecimal getDiscountValue() { return discountValue; }
     public BigDecimal getMaxDiscountAmount() { return maxDiscountAmount; }
     public BigDecimal getMinimumOrderAmount() { return minimumOrderAmount; }
+    public Instant getStartsAt() { return startsAt; }
     public Instant getEndsAt() { return endsAt; }
     public Integer getTotalUsageLimit() { return totalUsageLimit; }
     public int getPerUserLimit() { return perUserLimit; }
+    public boolean isActive() { return active; }
 }

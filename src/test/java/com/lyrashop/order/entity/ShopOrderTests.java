@@ -148,4 +148,29 @@ class ShopOrderTests {
         assertThat(order.getCancellationReason()).isEqualTo("Đơn hàng tự động hết hạn");
         assertThat(order.getExpiresAt()).isNull();
     }
+
+    @Test
+    void recordsPartialAndCompleteReturnRefunds() {
+        ShopOrder order = ShopOrder.create(
+                UUID.randomUUID(), new BigDecimal("10.00"), PaymentMethod.COD,
+                "12 Test Street", "0900000000", null
+        );
+        order.transitionTo(OrderStatus.CONFIRMED);
+        order.transitionTo(OrderStatus.PROCESSING);
+        order.transitionTo(OrderStatus.SHIPPING);
+        order.transitionTo(OrderStatus.DELIVERED);
+        order.requestReturn("Không vừa size");
+        order.updateReturnStatus("REQUESTED", "APPROVED");
+        order.updateReturnStatus("APPROVED", "RECEIVED");
+
+        order.recordRefund(new BigDecimal("4.00"), false, true, false);
+        assertThat(order.getPaymentStatus()).isEqualTo(PaymentStatus.PAID);
+        assertThat(order.getReturnStatus()).isEqualTo("PARTIALLY_REFUNDED");
+        assertThat(order.getRefundedAmount()).isEqualByComparingTo("4.00");
+
+        order.recordRefund(new BigDecimal("6.00"), true, true, true);
+        assertThat(order.getPaymentStatus()).isEqualTo(PaymentStatus.REFUNDED);
+        assertThat(order.getReturnStatus()).isEqualTo("REFUNDED");
+        assertThat(order.getRefundedAmount()).isEqualByComparingTo("10.00");
+    }
 }

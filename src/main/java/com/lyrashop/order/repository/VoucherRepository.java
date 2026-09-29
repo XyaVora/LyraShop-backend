@@ -13,6 +13,8 @@ import com.lyrashop.order.entity.Voucher;
 import jakarta.persistence.LockModeType;
 
 public interface VoucherRepository extends JpaRepository<Voucher, UUID> {
+    List<Voucher> findAllByOrderByCodeAsc();
+    boolean existsByCode(String code);
     @Query("select v from Voucher v where v.active = true and v.startsAt <= :now and v.endsAt > :now order by v.code")
     List<Voucher> findCurrentlyActive(@Param("now") Instant now);
     @Query("select v from Voucher v where v.code = :code and v.active = true and v.startsAt <= :now and v.endsAt > :now")

@@ -35,6 +35,20 @@ public class CustomerReturnRequest {
     public static CustomerReturnRequest create(UUID orderId, UUID userId, String reason) {
         return new CustomerReturnRequest(orderId, userId, reason);
     }
+    public void approve() { transition("REQUESTED", "APPROVED"); }
+    public void reject() { transition("REQUESTED", "REJECTED"); }
+    public void receive() { transition("APPROVED", "RECEIVED"); }
+    public void recordRefund(boolean completed) {
+        if (!"RECEIVED".equals(status) && !"PARTIALLY_REFUNDED".equals(status)) {
+            throw new IllegalStateException("invalid return status transition");
+        }
+        status = completed ? "REFUNDED" : "PARTIALLY_REFUNDED";
+    }
+
+    private void transition(String expected, String next) {
+        if (!expected.equals(status)) throw new IllegalStateException("invalid return status transition");
+        status = next;
+    }
     public UUID getId(){return id;} public UUID getOrderId(){return orderId;} public UUID getUserId(){return userId;}
     public String getStatus(){return status;} public String getReason(){return reason;}
     public Instant getCreatedAt(){return createdAt;} public Instant getUpdatedAt(){return updatedAt;}

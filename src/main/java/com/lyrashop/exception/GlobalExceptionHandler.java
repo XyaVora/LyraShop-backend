@@ -36,6 +36,7 @@ import com.lyrashop.user.service.InvalidProfileDataException;
 import com.lyrashop.user.service.InvalidNewsletterTokenException;
 import com.lyrashop.user.service.LastAdminException;
 import com.lyrashop.user.service.UserNotFoundException;
+import com.lyrashop.user.service.SelfAdminMutationException;
 import com.lyrashop.order.service.EmptyCartException;
 import com.lyrashop.order.service.InvalidOrderStatusException;
 import com.lyrashop.order.service.InvalidPaymentMethodException;
@@ -437,6 +438,16 @@ public class GlobalExceptionHandler {
                 HttpStatus.CONFLICT.value(),
                 "LAST_ADMIN",
                 "The last remaining admin cannot be demoted",
+                request.getRequestURI()));
+    }
+
+    @ExceptionHandler(SelfAdminMutationException.class)
+    ResponseEntity<ApiErrorResponse> handleSelfAdminMutation(
+            SelfAdminMutationException exception, HttpServletRequest request) {
+        return problem(HttpStatus.CONFLICT, ApiErrorResponse.of(
+                HttpStatus.CONFLICT.value(),
+                "SELF_ADMIN_MUTATION",
+                "Administrators cannot lock or demote their own account",
                 request.getRequestURI()));
     }
 

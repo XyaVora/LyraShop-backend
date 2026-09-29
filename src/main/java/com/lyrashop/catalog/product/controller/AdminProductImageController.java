@@ -9,6 +9,8 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -18,6 +20,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.lyrashop.catalog.product.dto.CreateProductImageRequest;
 import com.lyrashop.catalog.product.dto.ProductImageResponse;
+import com.lyrashop.catalog.product.dto.UpdateProductImageRequest;
 import com.lyrashop.catalog.product.service.ProductImageService;
 import com.lyrashop.catalog.product.service.ProductNotFoundException;
 
@@ -69,5 +72,28 @@ public class AdminProductImageController {
                 .body(ProductImageResponse.from(
                         productImageService.createFromFile(productUuid, file, variantId, primary, sortOrder)
                 ));
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @PutMapping(path = "/{imageId}", consumes = MediaType.APPLICATION_JSON_VALUE,
+            produces = MediaType.APPLICATION_JSON_VALUE)
+    public ProductImageResponse update(@PathVariable String productId, @PathVariable Long imageId,
+            @Valid @RequestBody UpdateProductImageRequest request) {
+        return ProductImageResponse.from(productImageService.update(productId(productId), imageId, request));
+    }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @DeleteMapping("/{imageId}")
+    public ResponseEntity<Void> delete(@PathVariable String productId, @PathVariable Long imageId) {
+        productImageService.delete(productId(productId), imageId);
+        return ResponseEntity.noContent().build();
+    }
+
+    private static UUID productId(String value) {
+        try {
+            return UUID.fromString(value);
+        } catch (IllegalArgumentException exception) {
+            throw new ProductNotFoundException();
+        }
     }
 }

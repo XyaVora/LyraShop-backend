@@ -2,6 +2,7 @@ package com.lyrashop.catalog.product.repository;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -14,4 +15,5 @@ public interface ProductImageRepository extends JpaRepository<ProductImage, Long
     List<ProductImage> findAllByProductIdInOrderByProductIdAscSortOrderAscIdAsc(List<UUID> productIds);
 
     List<ProductImage> findAllByProductIdAndPrimaryTrue(UUID productId);
+    Optional<ProductImage> findByIdAndProductId(Long id, UUID productId);
 }

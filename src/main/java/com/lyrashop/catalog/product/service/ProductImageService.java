@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.lyrashop.catalog.product.dto.CreateProductImageRequest;
+import com.lyrashop.catalog.product.dto.UpdateProductImageRequest;
 import com.lyrashop.catalog.product.entity.ProductImage;
 import com.lyrashop.catalog.product.repository.ProductImageRepository;
 import com.lyrashop.catalog.product.repository.ProductRepository;
@@ -77,5 +78,40 @@ public class ProductImageService {
     @Transactional(readOnly = true)
     public List<ProductImage> listForProduct(UUID productId) {
         return images.findAllByProductIdOrderBySortOrderAscIdAsc(productId);
+    }
+
+    @Transactional
+    public ProductImage update(UUID productId, Long imageId, UpdateProductImageRequest request) {
+        ProductImage image = images.findByIdAndProductId(imageId, productId)
+                .orElseThrow(ProductNotFoundException::new);
+        if (request.variantId() != null
+                && variants.findByIdAndProductId(request.variantId(), productId).isEmpty()) {
+            throw new VariantNotFoundException();
+        }
+        if (request.primary()) {
+            images.findAllByProductIdAndPrimaryTrue(productId).stream()
+                    .filter(current -> !current.getId().equals(imageId))
+                    .forEach(ProductImage::clearPrimary);
+        }
+        image.updatePlacement(request.variantId(), request.primary(), request.sortOrder());
+        return images.saveAndFlush(image);
+    }
+
+    @Transactional
+    public void delete(UUID productId, Long imageId) {
+        ProductImage image = images.findByIdAndProductId(imageId, productId)
+                .orElseThrow(ProductNotFoundException::new);
+        boolean wasPrimary = image.isPrimary();
+        String url = image.getUrl();
+        images.delete(image);
+        images.flush();
+        if (wasPrimary) {
+            images.findAllByProductIdOrderBySortOrderAscIdAsc(productId).stream().findFirst()
+                    .ifPresent(next -> {
+                        next.updatePlacement(next.getVariantId(), true, next.getSortOrder());
+                        images.save(next);
+                    });
+        }
+        if (url.startsWith("/api/v1/files/")) storage.delete(url);
     }
 }

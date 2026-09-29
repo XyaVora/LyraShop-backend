@@ -1,0 +1,1 @@
+package com.lyrashop.audit.repository;import java.util.*;import org.springframework.data.jpa.repository.JpaRepository;import com.lyrashop.audit.entity.AdminAuditLog;public interface AdminAuditLogRepository extends JpaRepository<AdminAuditLog,Long>{List<AdminAuditLog> findTop200ByOrderByCreatedAtDescIdDesc();}

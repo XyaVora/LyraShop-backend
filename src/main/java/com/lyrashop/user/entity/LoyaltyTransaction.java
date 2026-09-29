@@ -9,5 +9,7 @@ import java.time.Instant;import java.util.UUID;import org.hibernate.annotations.
  public static LoyaltyTransaction orderEarn(UUID u,UUID o,long amount){return new LoyaltyTransaction(u,o,amount,"ORDER_EARN","Tích Xu từ đơn hàng");}
  public static LoyaltyTransaction orderSpend(UUID u,UUID o,long amount){return new LoyaltyTransaction(u,o,-amount,"ORDER_SPEND","Dùng Xu cho đơn hàng");}
  public static LoyaltyTransaction orderRefund(UUID u,UUID o,long amount){return new LoyaltyTransaction(u,o,amount,"ORDER_REFUND","Hoàn Xu từ đơn hàng đã hủy");}
+ public static LoyaltyTransaction orderReturnRefund(UUID u,UUID o,long amount){return new LoyaltyTransaction(u,o,amount,"ORDER_RETURN_REFUND","Hoàn Xu tương ứng với hàng trả lại");}
+ public static LoyaltyTransaction orderEarnReversal(UUID u,UUID o,long amount){return new LoyaltyTransaction(u,o,-amount,"ORDER_EARN_REVERSAL","Thu hồi Xu từ đơn hàng trả lại");}
  public long getAmount(){return amount;}public String getType(){return type;}public String getDescription(){return description;}public UUID getOrderId(){return orderId;}public Instant getCreatedAt(){return createdAt;}
 }

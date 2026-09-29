@@ -13,11 +13,14 @@ import com.lyrashop.catalog.variant.dto.CreateProductVariantRequest;
 import com.lyrashop.catalog.variant.dto.UpdateProductVariantRequest;
 import com.lyrashop.catalog.variant.entity.ProductVariant;
 import com.lyrashop.catalog.variant.repository.ProductVariantRepository;
+import com.lyrashop.catalog.variant.repository.InventoryAdjustmentRepository;
+import com.lyrashop.catalog.variant.entity.InventoryAdjustment;
+import com.lyrashop.catalog.variant.dto.InventoryAdjustmentResponse;
 
 @Service
 public class ProductVariantService {
- private final ProductVariantRepository variants; private final ProductRepository products;
- public ProductVariantService(ProductVariantRepository variants, ProductRepository products){this.variants=variants;this.products=products;}
+ private final ProductVariantRepository variants; private final ProductRepository products; private final InventoryAdjustmentRepository adjustments;
+ public ProductVariantService(ProductVariantRepository variants, ProductRepository products, InventoryAdjustmentRepository adjustments){this.variants=variants;this.products=products;this.adjustments=adjustments;}
  @Transactional public ProductVariant create(UUID productId, CreateProductVariantRequest r){
   if(!products.existsByIdAndActiveTrue(productId)) throw new VariantProductNotFoundException();
   String sku=normalizeSku(r.sku());
@@ -50,14 +53,16 @@ public class ProductVariantService {
   variant.activate();
   variants.saveAndFlush(variant);
  }
- @Transactional public ProductVariant adjustInventory(UUID productId, UUID variantId, AdjustProductVariantInventoryRequest r){
+ @Transactional public ProductVariant adjustInventory(UUID productId, UUID variantId, UUID adminId, AdjustProductVariantInventoryRequest r){
   if(!products.existsById(productId)) throw new VariantProductNotFoundException();
   ProductVariant variant=variants.findByIdAndProductId(variantId,productId).orElseThrow(VariantNotFoundException::new);
   if(variant.getVersion()!=r.version()) throw new VariantVersionConflictException();
+  int before=variant.getStock();
   variant.adjustInventory(r.stock());
-  try{return variants.saveAndFlush(variant);}
+  try{ProductVariant saved=variants.saveAndFlush(variant);adjustments.save(new InventoryAdjustment(productId,variantId,adminId,before,r.stock(),r.reason()));return saved;}
   catch(ObjectOptimisticLockingFailureException e){throw new VariantVersionConflictException(e);}
  }
+ @Transactional(readOnly=true) public List<InventoryAdjustmentResponse> inventoryHistory(UUID productId){if(!products.existsById(productId))throw new VariantProductNotFoundException();return adjustments.findAllByProductIdOrderByCreatedAtDescIdDesc(productId).stream().map(InventoryAdjustmentResponse::from).toList();}
  @Transactional(readOnly = true) public List<ProductVariantResult> listActiveForProduct(UUID productId){
   return variants.findAllByProductIdAndActiveTrueOrderBySkuAscIdAsc(productId).stream().map(ProductVariantResult::from).toList();
  }

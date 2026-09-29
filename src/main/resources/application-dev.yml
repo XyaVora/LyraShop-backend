@@ -4,6 +4,11 @@ spring:
     url: ${DB_URL:jdbc:mysql://127.0.0.1:3307/lyrashop_db?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true}
     username: ${DB_USERNAME:lyrashop}
     password: ${DB_PASSWORD:lyrashop_local}
+  flyway:
+    # lyrashop_schema.sql is a V1-V34 snapshot and intentionally has no history table.
+    # Empty databases still run every migration; imported snapshots start at V34.
+    baseline-on-migrate: ${FLYWAY_BASELINE_ON_MIGRATE:true}
+    baseline-version: ${FLYWAY_BASELINE_VERSION:34}
 
 app:
   uploads:
@@ -14,7 +19,18 @@ app:
       password: ${BOOTSTRAP_ADMIN_PASSWORD:AdminPass1234}
       full-name: ${BOOTSTRAP_ADMIN_FULL_NAME:Local Admin}
   security:
+    email-verification:
+      frontend-url: ${EMAIL_VERIFICATION_FRONTEND_URL:http://localhost:3000/auth}
+    password-reset:
+      frontend-url: ${PASSWORD_RESET_FRONTEND_URL:http://localhost:3000/auth}
     cors:
       allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174,http://localhost:3000,http://127.0.0.1:3000}
     jwt:
       secret-base64: ${JWT_SECRET_BASE64:MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=}
+  newsletter:
+    frontend-url: ${NEWSLETTER_FRONTEND_URL:http://localhost:3000/}
+
+management:
+  health:
+    mail:
+      enabled: ${MANAGEMENT_HEALTH_MAIL_ENABLED:false}

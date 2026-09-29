@@ -25,6 +25,8 @@ import com.lyrashop.catalog.variant.entity.ProductVariant;
 import com.lyrashop.catalog.variant.repository.ProductVariantRepository;
 import com.lyrashop.catalog.variant.service.VariantNotFoundException;
 import com.lyrashop.promotion.service.PromotionService;
+import com.lyrashop.user.repository.UserRepository;
+import com.lyrashop.user.service.UserNotFoundException;
 
 @Service
 public class CartService {
@@ -35,6 +37,7 @@ public class CartService {
     private final ProductRepository products;
     private final CategoryRepository categories;
     private final PromotionService promotions;
+    private final UserRepository users;
 
     public CartService(
             CartRepository carts,
@@ -42,7 +45,8 @@ public class CartService {
             ProductVariantRepository variants,
             ProductRepository products,
             CategoryRepository categories,
-            PromotionService promotions
+            PromotionService promotions,
+            UserRepository users
     ) {
         this.carts = carts;
         this.items = items;
@@ -50,6 +54,7 @@ public class CartService {
         this.products = products;
         this.categories = categories;
         this.promotions = promotions;
+        this.users = users;
     }
 
     @Transactional
@@ -117,13 +122,9 @@ public class CartService {
     }
 
     private Cart getOrCreate(UUID userId) {
-        return carts.findByUserId(userId).orElseGet(() -> {
-            try {
-                return carts.saveAndFlush(Cart.create(userId));
-            } catch (DataIntegrityViolationException exception) {
-                return carts.findByUserId(userId).orElseThrow(() -> exception);
-            }
-        });
+        users.findByIdForUpdate(userId).orElseThrow(UserNotFoundException::new);
+        return carts.findByUserId(userId)
+                .orElseGet(() -> carts.saveAndFlush(Cart.create(userId)));
     }
 
     private ProductVariant requirePurchasable(UUID variantId) {

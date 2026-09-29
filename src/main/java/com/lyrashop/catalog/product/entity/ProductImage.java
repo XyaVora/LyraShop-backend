@@ -81,6 +81,13 @@ public class ProductImage {
         this.primary = false;
     }
 
+    public void updatePlacement(UUID variantId, boolean primary, int sortOrder) {
+        if (sortOrder < 0) throw new IllegalArgumentException("sortOrder must be non-negative");
+        this.variantId = variantId;
+        this.primary = primary;
+        this.sortOrder = sortOrder;
+    }
+
     public Long getId() { return id; }
     public UUID getProductId() { return productId; }
     public UUID getVariantId() { return variantId; }

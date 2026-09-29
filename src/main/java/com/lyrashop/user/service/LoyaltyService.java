@@ -104,6 +104,42 @@ public class LoyaltyService {
         transactions.save(LoyaltyTransaction.orderRefund(order.getUserId(), order.getId(), amount));
     }
 
+    @Transactional
+    public void refundReturnedOrder(ShopOrder order, BigDecimal returnedMerchandiseAmount) {
+        BigDecimal merchandiseNet = order.getTotalAmount()
+                .subtract(order.getShippingFee())
+                .subtract(order.getGiftWrapFee())
+                .max(BigDecimal.ZERO);
+        long returnedSpentCoins = proportionalAmount(order.getLoyaltyCoinsUsed(),
+                returnedMerchandiseAmount, merchandiseNet);
+        if (returnedSpentCoins > 0
+                && !transactions.existsByTypeAndOrderId("ORDER_RETURN_REFUND", order.getId())) {
+            LoyaltyAccount account = lockedAccount(order.getUserId());
+            account.credit(returnedSpentCoins);
+            accounts.save(account);
+            transactions.save(LoyaltyTransaction.orderReturnRefund(
+                    order.getUserId(), order.getId(), returnedSpentCoins));
+        }
+        if (transactions.existsByTypeAndOrderId("ORDER_EARN_REVERSAL", order.getId())) return;
+        LoyaltyTransaction earned = transactions.findByTypeAndOrderId("ORDER_EARN", order.getId()).orElse(null);
+        if (earned == null || earned.getAmount() < 1) return;
+        long reversalAmount = returnedMerchandiseAmount
+                .divide(new BigDecimal("1000"), 0, RoundingMode.DOWN)
+                .longValue();
+        reversalAmount = Math.min(reversalAmount, earned.getAmount());
+        if (reversalAmount < 1) return;
+        LoyaltyAccount account = lockedAccount(order.getUserId());
+        account.reverseCredit(reversalAmount);
+        accounts.save(account);
+        transactions.save(LoyaltyTransaction.orderEarnReversal(order.getUserId(), order.getId(), reversalAmount));
+    }
+
+    private static long proportionalAmount(long amount, BigDecimal part, BigDecimal whole) {
+        if (amount < 1 || part == null || part.signum() <= 0 || whole == null || whole.signum() <= 0) return 0;
+        return BigDecimal.valueOf(amount).multiply(part.min(whole))
+                .divide(whole, 0, RoundingMode.DOWN).longValue();
+    }
+
     public static long maximumRedeemable(BigDecimal payableBeforeCoins) {
         if (payableBeforeCoins == null || payableBeforeCoins.signum() <= 0) return 0;
         return payableBeforeCoins.multiply(BigDecimal.valueOf(MAX_REDEMPTION_PERCENT))
@@ -126,6 +162,7 @@ public class LoyaltyService {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("tier", tier);
         result.put("coinBalance", account.getCoinBalance());
+        result.put("coinDebt", account.getCoinDebt());
         result.put("totalSpend", spend);
         result.put("checkedInToday", LocalDate.now(VIETNAM).equals(account.getLastCheckIn()));
         result.put("nextTierSpend", tier.equals("DIAMOND") ? BigDecimal.ZERO

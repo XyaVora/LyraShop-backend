@@ -23,6 +23,14 @@ public interface ShopOrderRepository extends JpaRepository<ShopOrder, UUID> {
 
     List<ShopOrder> findAllByOrderByCreatedAtDescIdDesc();
 
+    @Query("""
+            select shopOrder from ShopOrder shopOrder
+            where lower(shopOrder.shippingPhone) like lower(concat('%', :query, '%'))
+               or lower(coalesce(shopOrder.trackingCode, '')) like lower(concat('%', :query, '%'))
+            order by shopOrder.createdAt desc, shopOrder.id desc
+            """)
+    List<ShopOrder> searchForAdmin(@Param("query") String query, Pageable pageable);
+
     Optional<ShopOrder> findByIdAndUserId(UUID id, UUID userId);
 
     Optional<ShopOrder> findByUserIdAndIdempotencyKey(UUID userId, String idempotencyKey);
@@ -49,18 +57,20 @@ public interface ShopOrderRepository extends JpaRepository<ShopOrder, UUID> {
     boolean hasDeliveredProduct(@Param("userId") UUID userId, @Param("productId") UUID productId);
 
     @Query("""
-            select coalesce(sum(shopOrder.totalAmount), 0)
+            select coalesce(sum(shopOrder.totalAmount - shopOrder.refundedAmount), 0)
             from ShopOrder shopOrder
             where shopOrder.paymentStatus = com.lyrashop.order.entity.PaymentStatus.PAID
+              and shopOrder.status <> com.lyrashop.order.entity.OrderStatus.CANCELLED
             """)
     BigDecimal sumPaidTotal();
-    @Query("select coalesce(sum(o.totalAmount),0) from ShopOrder o where o.userId=:userId and o.paymentStatus=com.lyrashop.order.entity.PaymentStatus.PAID and o.status<>com.lyrashop.order.entity.OrderStatus.CANCELLED")
+    @Query("select coalesce(sum(o.totalAmount - o.refundedAmount),0) from ShopOrder o where o.userId=:userId and o.paymentStatus=com.lyrashop.order.entity.PaymentStatus.PAID and o.status<>com.lyrashop.order.entity.OrderStatus.CANCELLED")
     BigDecimal sumPaidTotalByUserId(@Param("userId") UUID userId);
 
     @Query("""
             select count(shopOrder)
             from ShopOrder shopOrder
             where shopOrder.paymentStatus = com.lyrashop.order.entity.PaymentStatus.PAID
+              and shopOrder.status <> com.lyrashop.order.entity.OrderStatus.CANCELLED
             """)
     long countPaid();
 

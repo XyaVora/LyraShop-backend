@@ -1,6 +1,7 @@
 package com.lyrashop.order.service;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -28,12 +29,16 @@ import com.lyrashop.order.dto.OrderResponse;
 import com.lyrashop.order.dto.VnpayIpnResponse;
 import com.lyrashop.order.dto.ReturnRequest;
 import com.lyrashop.order.dto.ReturnRequestResponse;
+import com.lyrashop.order.dto.RefundOrderRequest;
+import com.lyrashop.order.dto.RefundResponse;
 import com.lyrashop.order.entity.CustomerReturnRequest;
 import com.lyrashop.order.entity.CustomerReturnItem;
 import com.lyrashop.order.entity.CustomerReturnEvidence;
+import com.lyrashop.order.entity.OrderRefund;
 import com.lyrashop.order.repository.CustomerReturnRequestRepository;
 import com.lyrashop.order.repository.CustomerReturnItemRepository;
 import com.lyrashop.order.repository.CustomerReturnEvidenceRepository;
+import com.lyrashop.order.repository.OrderRefundRepository;
 import com.lyrashop.order.entity.OrderItem;
 import com.lyrashop.order.entity.OrderStatus;
 import com.lyrashop.order.entity.PaymentMethod;
@@ -65,6 +70,7 @@ public class OrderService {
     private final CustomerReturnEvidenceRepository returnEvidence;
     private final ReturnEvidenceUploadService evidenceUploads;
     private final OrderProperties orderProperties;
+    private final OrderRefundRepository refunds;
 
     public OrderService(
             ShopOrderRepository orders,
@@ -82,7 +88,8 @@ public class OrderService {
             CustomerReturnItemRepository returnItems,
             CustomerReturnEvidenceRepository returnEvidence,
             ReturnEvidenceUploadService evidenceUploads,
-            OrderProperties orderProperties
+            OrderProperties orderProperties,
+            OrderRefundRepository refunds
     ) {
         this.orders = orders;
         this.carts = carts;
@@ -100,6 +107,7 @@ public class OrderService {
         this.returnEvidence = returnEvidence;
         this.evidenceUploads = evidenceUploads;
         this.orderProperties = orderProperties;
+        this.refunds = refunds;
     }
 
     @Transactional
@@ -273,6 +281,22 @@ public class OrderService {
     }
 
     @Transactional
+    public OrderResponse cancelForAdmin(UUID orderId, String reason) {
+        ShopOrder order = orders.findForUpdate(orderId).orElseThrow(OrderNotFoundException::new);
+        try {
+            order.cancel(reason);
+        } catch (IllegalStateException exception) {
+            throw new InvalidOrderStatusException();
+        }
+        restoreStock(order);
+        vouchers.release(orderId);
+        loyalty.refundCancelledOrder(order);
+        ShopOrder saved = orders.saveAndFlush(order);
+        recordTracking(orderId, "CANCELLED", "Quản trị viên đã hủy đơn: " + reason, null);
+        return OrderResponse.from(saved);
+    }
+
+    @Transactional
     public OrderResponse confirmReceived(UUID userId, UUID orderId) {
         ShopOrder order = orders.findForUpdateByUser(orderId, userId)
                 .orElseThrow(OrderNotFoundException::new);
@@ -363,6 +387,127 @@ public class OrderService {
         return OrderResponse.from(saved);
     }
 
+    @Transactional(readOnly = true)
+    public List<ReturnRequestResponse> listReturnRequestsForAdmin() {
+        return returnRequests.findAllByOrderByCreatedAtDesc().stream()
+                .map(this::returnResponse)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public ReturnRequestResponse getReturnRequestForAdmin(UUID orderId) {
+        orders.findById(orderId).orElseThrow(OrderNotFoundException::new);
+        return returnResponse(returnRequests.findByOrderId(orderId).orElseThrow(OrderNotFoundException::new));
+    }
+
+    @Transactional
+    public ReturnRequestResponse approveReturn(UUID orderId, String note) {
+        ShopOrder order = orders.findForUpdate(orderId).orElseThrow(OrderNotFoundException::new);
+        CustomerReturnRequest request = lockedReturn(orderId);
+        try {
+            request.approve();
+            order.updateReturnStatus("REQUESTED", "APPROVED");
+        } catch (IllegalStateException exception) {
+            throw new InvalidOrderStatusException();
+        }
+        orders.save(order);
+        returnRequests.saveAndFlush(request);
+        recordTracking(orderId, "RETURN_APPROVED", decisionDescription("Yêu cầu trả hàng đã được duyệt", note), null);
+        return returnResponse(request);
+    }
+
+    @Transactional
+    public ReturnRequestResponse rejectReturn(UUID orderId, String note) {
+        ShopOrder order = orders.findForUpdate(orderId).orElseThrow(OrderNotFoundException::new);
+        CustomerReturnRequest request = lockedReturn(orderId);
+        try {
+            request.reject();
+            order.updateReturnStatus("REQUESTED", "REJECTED");
+        } catch (IllegalStateException exception) {
+            throw new InvalidOrderStatusException();
+        }
+        orders.save(order);
+        returnRequests.saveAndFlush(request);
+        recordTracking(orderId, "RETURN_REJECTED", decisionDescription("Yêu cầu trả hàng bị từ chối", note), null);
+        return returnResponse(request);
+    }
+
+    @Transactional
+    public ReturnRequestResponse receiveReturn(UUID orderId, String note) {
+        ShopOrder order = orders.findForUpdate(orderId).orElseThrow(OrderNotFoundException::new);
+        CustomerReturnRequest request = lockedReturn(orderId);
+        try {
+            request.receive();
+            order.updateReturnStatus("APPROVED", "RECEIVED");
+        } catch (IllegalStateException exception) {
+            throw new InvalidOrderStatusException();
+        }
+        Map<Long, OrderItem> orderItems = new HashMap<>();
+        order.getItems().forEach(item -> orderItems.put(item.getId(), item));
+        for (CustomerReturnItem returned : returnItems.findAllByReturnRequestIdOrderByIdAsc(request.getId())) {
+            OrderItem item = orderItems.get(returned.getOrderItemId());
+            if (item == null) throw new InvalidOrderStatusException();
+            ProductVariant variant = variants.findForStockUpdate(item.getVariantId())
+                    .orElseThrow(VariantNotFoundException::new);
+            variant.incrementStock(returned.getQuantity());
+            variants.save(variant);
+        }
+        orders.save(order);
+        returnRequests.saveAndFlush(request);
+        recordTracking(orderId, "RETURN_RECEIVED", decisionDescription("Kho đã nhận hàng hoàn", note), null);
+        return returnResponse(request);
+    }
+
+    @Transactional
+    public RefundResponse refundOrder(UUID orderId, UUID adminId, RefundOrderRequest refundRequest) {
+        ShopOrder order = orders.findForUpdate(orderId).orElseThrow(OrderNotFoundException::new);
+        CustomerReturnRequest returnRequest = returnRequests.findForUpdateByOrderId(orderId).orElse(null);
+        boolean returnRefund = returnRequest != null;
+        if (returnRefund && !"RECEIVED".equals(returnRequest.getStatus())
+                && !"PARTIALLY_REFUNDED".equals(returnRequest.getStatus())) {
+            throw new InvalidOrderStatusException();
+        }
+        if (!returnRefund && order.getStatus() != OrderStatus.CANCELLED) {
+            throw new InvalidOrderStatusException();
+        }
+        if (order.getPaymentStatus() != PaymentStatus.PAID || refunds.existsByReference(refundRequest.reference())) {
+            throw new InvalidOrderStatusException();
+        }
+        BigDecimal alreadyRefunded = refunds.sumAmountByOrderId(orderId);
+        BigDecimal orderRemaining = order.getTotalAmount().subtract(alreadyRefunded);
+        BigDecimal returnLimit = returnRefund ? returnRefundLimit(order, returnRequest) : order.getTotalAmount();
+        BigDecimal returnRemaining = returnLimit.subtract(alreadyRefunded);
+        BigDecimal maximum = orderRemaining.min(returnRemaining);
+        if (refundRequest.amount().compareTo(maximum) > 0) throw new InvalidOrderStatusException();
+
+        BigDecimal refundedTotal = alreadyRefunded.add(refundRequest.amount());
+        boolean paymentCompleted = refundedTotal.compareTo(order.getTotalAmount()) == 0;
+        boolean returnCompleted = refundedTotal.compareTo(returnLimit) == 0;
+        OrderRefund saved = refunds.saveAndFlush(new OrderRefund(orderId,
+                returnRefund ? returnRequest.getId() : null, adminId, refundRequest.amount(),
+                refundRequest.reference(), refundRequest.note()));
+        order.recordRefund(refundRequest.amount(), paymentCompleted, returnRefund, returnCompleted);
+        if (returnRefund) {
+            returnRequest.recordRefund(returnCompleted);
+            returnRequests.save(returnRequest);
+        }
+        if (returnRefund && returnCompleted) loyalty.refundReturnedOrder(order, returnLimit);
+        else if (paymentCompleted) loyalty.refundCancelledOrder(order);
+        orders.saveAndFlush(order);
+        recordTracking(orderId, returnCompleted ? "REFUNDED" : "PARTIALLY_REFUNDED",
+                "Đã ghi nhận hoàn " + refundRequest.amount().toPlainString() + " VND, mã "
+                        + refundRequest.reference(), null);
+        return RefundResponse.from(saved);
+    }
+
+    @Transactional(readOnly = true)
+    public List<RefundResponse> listRefunds(UUID orderId) {
+        orders.findById(orderId).orElseThrow(OrderNotFoundException::new);
+        return refunds.findAllByOrderIdOrderByCreatedAtDesc(orderId).stream()
+                .map(RefundResponse::from)
+                .toList();
+    }
+
     @Transactional
     public OrderResponse updateTracking(UUID orderId, String carrier, String code, String url,
             java.time.Instant estimatedDeliveryAt) {
@@ -375,6 +520,14 @@ public class OrderService {
 
     @Transactional(readOnly=true)
     public List<Map<String,Object>> tracking(UUID userId,UUID orderId){orders.findByIdAndUserId(orderId,userId).orElseThrow(OrderNotFoundException::new);return trackingEvents.findAllByOrderIdOrderByOccurredAtDesc(orderId).stream().map(e->{Map<String,Object> m=new java.util.LinkedHashMap<>();m.put("id",e.getId());m.put("status",e.getStatus());m.put("description",e.getDescription());m.put("location",e.getLocation());m.put("occurredAt",e.getOccurredAt());return m;}).toList();}
+
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> trackingForAdmin(UUID orderId) {
+        orders.findById(orderId).orElseThrow(OrderNotFoundException::new);
+        return trackingEvents.findAllByOrderIdOrderByOccurredAtDesc(orderId).stream()
+                .map(OrderService::trackingEventResponse)
+                .toList();
+    }
     @Transactional public Map<String,Object> addTrackingEvent(UUID orderId,com.lyrashop.order.dto.TrackingEventRequest r){orders.findById(orderId).orElseThrow(OrderNotFoundException::new);var e=trackingEvents.save(new com.lyrashop.order.entity.TrackingEvent(orderId,r.status(),r.description(),r.location(),r.occurredAt()));return trackingEventResponse(e);}
 
     @Transactional
@@ -416,6 +569,39 @@ public class OrderService {
             variant.incrementStock(item.getQuantity());
             variants.save(variant);
         }
+    }
+
+    private CustomerReturnRequest lockedReturn(UUID orderId) {
+        return returnRequests.findForUpdateByOrderId(orderId).orElseThrow(OrderNotFoundException::new);
+    }
+
+    private ReturnRequestResponse returnResponse(CustomerReturnRequest request) {
+        return ReturnRequestResponse.from(request,
+                returnItems.findAllByReturnRequestIdOrderByIdAsc(request.getId()),
+                returnEvidence.findAllByReturnRequestIdOrderByIdAsc(request.getId()));
+    }
+
+    private BigDecimal returnRefundLimit(ShopOrder order, CustomerReturnRequest request) {
+        Map<Long, OrderItem> byId = new HashMap<>();
+        order.getItems().forEach(item -> byId.put(item.getId(), item));
+        BigDecimal selectedGross = BigDecimal.ZERO;
+        for (CustomerReturnItem returned : returnItems.findAllByReturnRequestIdOrderByIdAsc(request.getId())) {
+            OrderItem item = byId.get(returned.getOrderItemId());
+            if (item == null) throw new InvalidOrderStatusException();
+            selectedGross = selectedGross.add(item.getUnitPrice().multiply(BigDecimal.valueOf(returned.getQuantity())));
+        }
+        if (order.getSubtotalAmount().signum() <= 0) return BigDecimal.ZERO.setScale(2);
+        BigDecimal merchandiseNet = order.getTotalAmount()
+                .subtract(order.getShippingFee())
+                .subtract(order.getGiftWrapFee())
+                .max(BigDecimal.ZERO);
+        return selectedGross.multiply(merchandiseNet)
+                .divide(order.getSubtotalAmount(), 2, RoundingMode.HALF_UP)
+                .min(order.getTotalAmount());
+    }
+
+    private static String decisionDescription(String action, String note) {
+        return note == null || note.isBlank() ? action : action + ": " + note.strip();
     }
 
     private void recordTracking(UUID orderId, String status, String description, String location) {

@@ -130,6 +130,10 @@ public class ShopOrder {
     @Column(name = "return_requested_at")
     private Instant returnRequestedAt;
 
+    @JdbcTypeCode(DECIMAL)
+    @Column(name = "refunded_amount", nullable = false, precision = 12, scale = 2)
+    private BigDecimal refundedAmount = BigDecimal.ZERO.setScale(2);
+
     @CreationTimestamp(source = SourceType.DB)
     @Column(name = "created_at", nullable = false, updatable = false, columnDefinition = "datetime(6)")
     private Instant createdAt;
@@ -290,6 +294,21 @@ public class ShopOrder {
         returnRequestedAt = null;
     }
 
+    public void updateReturnStatus(String expected, String next) {
+        if (!expected.equals(returnStatus)) throw new IllegalStateException("invalid return status transition");
+        returnStatus = next;
+    }
+
+    public void recordRefund(BigDecimal amount, boolean paymentCompleted, boolean returnRefund,
+            boolean returnCompleted) {
+        if (paymentStatus != PaymentStatus.PAID || amount == null || amount.signum() <= 0) {
+            throw new IllegalStateException("order cannot be refunded");
+        }
+        refundedAmount = refundedAmount.add(amount);
+        if (paymentCompleted) paymentStatus = PaymentStatus.REFUNDED;
+        if (returnRefund) returnStatus = returnCompleted ? "REFUNDED" : "PARTIALLY_REFUNDED";
+    }
+
     public void markPaid() {
         if (status == OrderStatus.CANCELLED) {
             throw new IllegalStateException("cancelled orders cannot be paid");
@@ -337,6 +356,7 @@ public class ShopOrder {
     public String getReturnStatus() { return returnStatus; }
     public String getReturnReason() { return returnReason; }
     public Instant getReturnRequestedAt() { return returnRequestedAt; }
+    public BigDecimal getRefundedAmount() { return refundedAmount == null ? BigDecimal.ZERO.setScale(2) : refundedAmount; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
     public List<OrderItem> getItems() { return List.copyOf(items); }

@@ -49,18 +49,27 @@ Ambiguous paths (trailing slash, matrix parameters) are still rejected by the Ng
 
 ## Run locally
 
-This path is for daily development: MySQL in Docker, the API on the host.
+The recommended development setup runs MySQL in Docker and the API on the
+host. Flyway owns this database: do not import any SQL snapshot into it.
 
 1. Start Docker Desktop and wait until it is ready.
-2. From the repo root:
+2. Check `.env` before starting. `bootRun` automatically loads `.env`, and its
+   values override the defaults in the `dev` profile. If `.env` contains
+   `DB_URL=...:3306`, the API will connect to that host database instead of the
+   local Docker database. For the local Docker workflow, either remove the
+   three database entries from `.env` or set them to:
+
+```dotenv
+DB_URL=jdbc:mysql://127.0.0.1:3307/lyrashop_db?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true
+DB_USERNAME=lyrashop
+DB_PASSWORD=lyrashop_local
+```
+
+3. From the repository root, run:
 
 ```powershell
 .\scripts\local-up.ps1
 ```
-
-`.\run-local.ps1` is the same command. Do not point the API at a host MySQL on
-3306 or set a per-boot JWT secret; the `dev` profile uses `127.0.0.1:3307`
-and a stable local key.
 
 On Linux or macOS:
 
@@ -69,12 +78,27 @@ chmod +x scripts/local-up.sh scripts/local-down.sh
 ./scripts/local-up.sh
 ```
 
-The script starts MySQL on `127.0.0.1:3307` (container 3306), then `bootRun` with the `dev` profile. Host 3306 is often reserved on Windows.
+The script starts MySQL on `127.0.0.1:3307` (container port `3306`), then runs
+the API with the `dev` profile. On an empty database, Flyway creates
+`flyway_schema_history`, applies V1-V34, and loads the sample catalog.
 
 - API: `http://127.0.0.1:8080`
-- Health: `http://127.0.0.1:8081/actuator/health`
+- Readiness: `http://127.0.0.1:8081/actuator/health/readiness`
+- Liveness: `http://127.0.0.1:8081/actuator/health/liveness`
+
+The `dev` profile disables the mail health indicator because the local stack
+does not include an SMTP server. Set `MANAGEMENT_HEALTH_MAIL_ENABLED=true` when
+an SMTP server is available at the configured host and port. Use the readiness
+endpoint to determine whether the API and database are available.
 
 Stop MySQL with `.\scripts\local-down.ps1` (or `./scripts/local-down.sh`).
+
+Verify the running API:
+
+```powershell
+curl.exe http://127.0.0.1:8081/actuator/health/readiness
+curl.exe http://127.0.0.1:8080/api/v1/products
+```
 
 Register a customer (password at least 12 characters). PowerShell mangles inline JSON, so use a file:
 
@@ -89,7 +113,14 @@ curl.exe -sS -X POST http://127.0.0.1:8080/api/v1/auth/register `
 
 Login returns `accessToken`. Send it as `Authorization: Bearer ...` on cart, orders, and admin routes. Refresh cookies are `Secure`; use the access token for local HTTP calls.
 
-Local admin (after the first `dev` boot): `admin@lyrashop.local` / `AdminPass1234`.
+Local admin (after the first `dev` boot): `admin@lyrashop.local` /
+`AdminPass1234`.
+
+Flyway's sample users are also available on a database initialized from V1:
+
+- `user@lyrashop.local` / `Password1234!`
+- `hoangmai@gmail.com` / `Password1234!`
+- `leminh@gmail.com` / `Password1234!`
 
 The `dev` profile is for this machine only. Production still uses `compose.yaml` with secret files and no published database port.
 
@@ -100,9 +131,75 @@ same variables. An existing admin can also `PUT /api/v1/admin/users/{id}/role`
 with `{"role":"ADMIN"}` or `{"role":"CUSTOMER"}`. The last remaining admin
 cannot be demoted.
 
-`lyrashop_schema.sql` is a readable snapshot of Flyway V1-V8 for Workbench.
-Do not import it into the Docker MySQL used by `local-up`; the API applies
-`src/main/resources/db/migration` on startup.
+### Workbench inspection database
+
+The SQL exports are for inspection or review in a separate MySQL database.
+They are not the normal way to initialize the backend database.
+
+- `lyrashop_schema.sql` and `database/01_schema.sql` contain the V1-V34
+  structure. They are destructive: each run drops and recreates
+  `lyrashop_db`.
+- `database/02_seed_data.sql` loads the sample users, catalog, orders,
+  vouchers, and required brand settings.
+- `database/lyrashop_db.sql` combines the schema and seed data into one import.
+
+For a complete Workbench import, either run `database/lyrashop_db.sql` once,
+or run these files in order:
+
+1. `database/01_schema.sql`
+2. `database/02_seed_data.sql`
+
+Do not run only the schema file and then expect products or sample accounts to
+exist. Do not rerun the schema file after adding data or creating Flyway
+history, because it drops the database.
+
+If the backend must intentionally use a database imported through Workbench,
+run both files first, then establish Flyway history once:
+
+```powershell
+.\gradlew.bat bootRun --args="--spring.profiles.active=dev --spring.flyway.baseline-on-migrate=true --spring.flyway.baseline-version=34"
+```
+
+After the baseline succeeds, use the normal command:
+
+```powershell
+.\gradlew.bat bootRun
+```
+
+Never baseline a schema-only import before loading `02_seed_data.sql`.
+Baselining tells Flyway to skip V1-V34, including their seed operations; the
+result is an empty catalog and missing sample accounts.
+
+Check an imported database with:
+
+```sql
+SELECT COUNT(*) AS products FROM products;             -- expected: 56
+SELECT COUNT(*) AS variants FROM product_variants;     -- expected: 305
+SELECT COUNT(*) AS users FROM users;                    -- expected: 4
+SELECT COUNT(*) AS brand_settings FROM brand_settings; -- expected: 1
+SELECT version, description, success
+FROM flyway_schema_history
+ORDER BY installed_rank;
+```
+
+Do not import any snapshot into the Docker MySQL used by `local-up`; the API
+applies `src/main/resources/db/migration` there automatically.
+
+### Database troubleshooting
+
+- `Found non-empty schema ... but no schema history table`: either recreate an
+  empty database and let Flyway migrate it, or baseline only after a complete
+  V32 Workbench schema-and-seed import.
+- `Duplicate column name`: an old or partial schema is being reused. Do not
+  continue individual `ALTER TABLE` statements; use the current destructive
+  snapshot for an inspection database, or reset the Flyway-managed local
+  database.
+- Products return an empty page: verify that migrations V10 and V12 ran, or
+  load `database/02_seed_data.sql` into an intentionally baselined Workbench
+  database.
+- `Brand settings are not configured`: V28 repairs the required singleton on
+  Flyway-managed databases. A database snapshot baselined at V32 must have the
+  seed file loaded before baseline.
 
 ## Authentication API
 

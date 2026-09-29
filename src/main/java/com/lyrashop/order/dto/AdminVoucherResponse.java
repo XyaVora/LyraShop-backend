@@ -1,0 +1,3 @@
+package com.lyrashop.order.dto;
+import java.math.BigDecimal;import java.time.Instant;import java.util.UUID;import com.lyrashop.order.entity.Voucher;
+public record AdminVoucherResponse(UUID id,String code,String label,String type,String discountType,BigDecimal discountValue,BigDecimal maxDiscountAmount,BigDecimal minimumOrderAmount,Instant startsAt,Instant endsAt,Integer totalUsageLimit,int perUserLimit,boolean active,long usageCount){public static AdminVoucherResponse from(Voucher v,long count){return new AdminVoucherResponse(v.getId(),v.getCode(),v.getLabel(),v.getType(),v.getDiscountType(),v.getDiscountValue(),v.getMaxDiscountAmount(),v.getMinimumOrderAmount(),v.getStartsAt(),v.getEndsAt(),v.getTotalUsageLimit(),v.getPerUserLimit(),v.isActive(),count);}}

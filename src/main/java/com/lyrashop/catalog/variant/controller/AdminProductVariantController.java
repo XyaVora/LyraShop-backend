@@ -3,6 +3,7 @@ package com.lyrashop.catalog.variant.controller;
 import java.util.UUID;
 import org.springframework.http.*;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import com.lyrashop.catalog.variant.dto.*;
 import com.lyrashop.catalog.variant.service.*;
@@ -52,11 +53,14 @@ public class AdminProductVariantController {
 
  @PreAuthorize("hasRole('ADMIN')")
  @PatchMapping(path="/{variantId}/inventory",consumes=MediaType.APPLICATION_JSON_VALUE,produces=MediaType.APPLICATION_JSON_VALUE)
- public ProductVariantInventoryResponse adjustInventory(@PathVariable String productId,@PathVariable String variantId,@Valid @RequestBody AdjustProductVariantInventoryRequest request){
+ public ProductVariantInventoryResponse adjustInventory(Authentication authentication,@PathVariable String productId,@PathVariable String variantId,@Valid @RequestBody AdjustProductVariantInventoryRequest request){
   UUID productUuid;
   try{productUuid=UUID.fromString(productId);}catch(IllegalArgumentException e){throw new VariantProductNotFoundException();}
   UUID variantUuid;
   try{variantUuid=UUID.fromString(variantId);}catch(IllegalArgumentException e){throw new VariantNotFoundException();}
-  return ProductVariantInventoryResponse.from(service.adjustInventory(productUuid,variantUuid,request));
+  return ProductVariantInventoryResponse.from(service.adjustInventory(productUuid,variantUuid,UUID.fromString(authentication.getName()),request));
  }
+
+ @PreAuthorize("hasRole('ADMIN')") @GetMapping(path="/inventory-adjustments",produces=MediaType.APPLICATION_JSON_VALUE)
+ public java.util.List<InventoryAdjustmentResponse> inventoryHistory(@PathVariable String productId){try{return service.inventoryHistory(UUID.fromString(productId));}catch(IllegalArgumentException e){throw new VariantProductNotFoundException();}}
 }

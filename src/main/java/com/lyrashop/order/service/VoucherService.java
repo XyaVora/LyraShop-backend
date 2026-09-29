@@ -8,6 +8,9 @@ import java.util.Locale;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import com.lyrashop.order.dto.AdminVoucherRequest;
+import com.lyrashop.order.dto.AdminVoucherResponse;
 
 import com.lyrashop.cart.service.StorePricing;
 import com.lyrashop.order.dto.VoucherQuoteResponse;
@@ -53,6 +56,12 @@ public class VoucherService {
     public void release(UUID orderId) {
         redemptions.deleteByOrderId(orderId);
     }
+
+    @Transactional(readOnly=true) public List<AdminVoucherResponse> adminList(){return vouchers.findAllByOrderByCodeAsc().stream().map(v->AdminVoucherResponse.from(v,redemptions.countByVoucherId(v.getId()))).toList();}
+    @Transactional public AdminVoucherResponse adminCreate(AdminVoucherRequest r){String code=canonicalCode(r.code());if(vouchers.existsByCode(code))throw new InvalidVoucherException();validateAdminRequest(r);Voucher v=vouchers.saveAndFlush(Voucher.create(code,r.label().strip(),r.type(),r.discountType(),r.discountValue(),r.maxDiscountAmount(),r.minimumOrderAmount(),r.startsAt(),r.endsAt(),r.totalUsageLimit(),r.perUserLimit(),r.active()));return AdminVoucherResponse.from(v,0);}
+    @Transactional public AdminVoucherResponse adminUpdate(UUID id,AdminVoucherRequest r){Voucher v=vouchers.findById(id).orElseThrow(InvalidVoucherException::new);validateAdminRequest(r);v.update(r.label().strip(),r.type(),r.discountType(),r.discountValue(),r.maxDiscountAmount(),r.minimumOrderAmount(),r.startsAt(),r.endsAt(),r.totalUsageLimit(),r.perUserLimit(),r.active());return AdminVoucherResponse.from(vouchers.saveAndFlush(v),redemptions.countByVoucherId(id));}
+    @Transactional public void adminDeactivate(UUID id){Voucher v=vouchers.findById(id).orElseThrow(InvalidVoucherException::new);v.deactivate();vouchers.saveAndFlush(v);}
+    private static void validateAdminRequest(AdminVoucherRequest r){if(!r.endsAt().isAfter(r.startsAt()))throw new InvalidVoucherException();if("PERCENT".equals(r.discountType())&&r.discountValue().compareTo(new BigDecimal("100"))>0)throw new InvalidVoucherException();if("FREESHIP".equals(r.discountType())&&r.discountValue().signum()!=0)throw new InvalidVoucherException();}
 
     public VoucherQuoteResponse noVoucher(BigDecimal merchandiseTotal) {
         BigDecimal shipping = StorePricing.shippingFee(merchandiseTotal);
