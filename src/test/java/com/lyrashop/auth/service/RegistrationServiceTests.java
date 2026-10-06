@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -15,6 +16,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.lyrashop.auth.dto.RegisterRequest;
+import com.lyrashop.config.EmailVerificationProperties;
 import com.lyrashop.exception.AuthenticationCapacityExceededException;
 import com.lyrashop.exception.EmailAlreadyRegisteredException;
 import com.lyrashop.security.BoundedPasswordOperations;
@@ -34,8 +36,36 @@ class RegistrationServiceTests {
     private final BoundedPasswordOperations passwordOperations =
             mock(BoundedPasswordOperations.class);
     private final EmailVerificationService emailVerificationService = mock(EmailVerificationService.class);
+    private final EmailVerificationProperties emailVerificationProperties = mock(EmailVerificationProperties.class);
     private final RegistrationService registrationService =
-            new RegistrationService(userRepository, passwordOperations, emailVerificationService);
+            new RegistrationService(userRepository, passwordOperations, emailVerificationService,
+                    emailVerificationProperties);
+
+    @Test
+    void createsImmediatelyLoginableAccountWhenVerificationIsDisabled() {
+        when(passwordOperations.hash(REQUEST.password())).thenReturn("encoded-password");
+        when(userRepository.existsByEmail(REQUEST.email())).thenReturn(false);
+        when(userRepository.saveAndFlush(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        RegistrationResult result = registrationService.register(REQUEST);
+
+        assertThat(result.email()).isEqualTo(REQUEST.email());
+        verify(userRepository).saveAndFlush(org.mockito.ArgumentMatchers.argThat(User::isEmailVerified));
+        verifyNoInteractions(emailVerificationService);
+    }
+
+    @Test
+    void createsUnverifiedAccountAndSendsEmailWhenVerificationIsRequired() {
+        when(emailVerificationProperties.required()).thenReturn(true);
+        when(passwordOperations.hash(REQUEST.password())).thenReturn("encoded-password");
+        when(userRepository.existsByEmail(REQUEST.email())).thenReturn(false);
+        when(userRepository.saveAndFlush(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        registrationService.register(REQUEST);
+
+        verify(userRepository).saveAndFlush(org.mockito.ArgumentMatchers.argThat(user -> !user.isEmailVerified()));
+        verify(emailVerificationService).issue(any(User.class), org.mockito.ArgumentMatchers.eq(false));
+    }
 
     @Test
     void mapsOnlyTheEmailUniqueConstraintToAConflict() {

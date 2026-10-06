@@ -21,7 +21,7 @@ public class AdminDashboardController {
         this.dashboardService = dashboardService;
     }
 
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','ORDER_MANAGER','SUPPORT')")
     @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
     public DashboardResponse get() {
         return dashboardService.snapshot();

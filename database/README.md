@@ -1,7 +1,7 @@
 # LyraShop database snapshot
 
 This directory is the review/import snapshot derived from the backend's
-Flyway migrations V1-V34. Flyway migrations remain the source of truth for the
+Flyway migrations V1-V41. Flyway migrations remain the source of truth for the
 running application.
 
 ## Files
@@ -21,8 +21,8 @@ disposable inspection database; do not run them against the local Docker
 database managed by Flyway.
 
 Do not baseline a schema-only import. Load `02_seed_data.sql` first, then use
-baseline version 34 only when the backend intentionally points at this
-Workbench database. Otherwise the V1-V34 data migrations are skipped and the
+baseline version 41 only when the backend intentionally points at this
+Workbench database. Otherwise the V1-V41 data migrations are skipped and the
 catalog remains empty.
 
 Regenerate all snapshots after adding a migration:
@@ -33,7 +33,7 @@ Regenerate all snapshots after adding a migration:
 
 ## Current inventory
 
-The final schema contains 35 application tables:
+The final schema contains 37 application tables:
 
 | Area | Tables |
 | --- | --- |
@@ -42,8 +42,8 @@ The final schema contains 35 application tables:
 | Cart and wishlist | `carts`, `cart_items`, `wishlist_items`, `wishlist_shares` |
 | Orders and fulfillment | `orders`, `order_items`, `tracking_events`, `customer_return_requests`, `customer_return_items`, `customer_return_evidence`, `return_evidence_uploads`, `order_refunds` |
 | Promotions | `promotions`, `promotion_products`, `vouchers`, `voucher_redemptions` |
-| Customer profile | `shipping_addresses`, `payment_methods`, `search_history`, `newsletter_subscriptions`, `loyalty_accounts`, `loyalty_transactions` |
-| Operations and content | `email_outbox`, `brand_settings`, `inventory_adjustments`, `admin_audit_logs` |
+| Customer profile | `shipping_addresses`, `payment_methods`, `search_history`, `newsletter_subscriptions`, `loyalty_accounts`, `loyalty_transactions`, `customer_support_notes` |
+| Operations and content | `email_outbox`, `brand_settings`, `inventory_adjustments`, `admin_audit_logs`, `admin_notification_reads` |
 
 The supplied seed data creates 476 records:
 
@@ -74,5 +74,5 @@ filled by normal application activity.
 - Seeded orders receive the correct `subtotal_amount`, matching the V13
   backfill.
 - Pending seeded orders receive `expires_at`, matching the V22 backfill.
-- All V9-V34 tables, columns, constraints, indexes, and required settings
+- All V9-V41 tables, columns, constraints, indexes, and required settings
   missing from the old V1-V8 snapshot are included.

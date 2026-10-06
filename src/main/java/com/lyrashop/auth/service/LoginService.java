@@ -7,6 +7,7 @@ import org.springframework.validation.annotation.Validated;
 
 import com.lyrashop.auth.dto.LoginRequest;
 import com.lyrashop.auth.validation.PasswordMaterial;
+import com.lyrashop.config.EmailVerificationProperties;
 import com.lyrashop.exception.InvalidCredentialsException;
 import com.lyrashop.security.BoundedPasswordOperations;
 import com.lyrashop.security.DummyPasswordHash;
@@ -27,17 +28,20 @@ public class LoginService {
     private final BoundedPasswordOperations passwordOperations;
     private final DummyPasswordHash dummyPasswordHash;
     private final RefreshTokenService refreshTokenService;
+    private final EmailVerificationProperties emailVerificationProperties;
 
     public LoginService(
             UserRepository userRepository,
             BoundedPasswordOperations passwordOperations,
             DummyPasswordHash dummyPasswordHash,
-            RefreshTokenService refreshTokenService
+            RefreshTokenService refreshTokenService,
+            EmailVerificationProperties emailVerificationProperties
     ) {
         this.userRepository = userRepository;
         this.passwordOperations = passwordOperations;
         this.dummyPasswordHash = dummyPasswordHash;
         this.refreshTokenService = refreshTokenService;
+        this.emailVerificationProperties = emailVerificationProperties;
     }
 
     public IssuedAuthentication login(@NotNull @Valid LoginRequest request) {
@@ -66,7 +70,9 @@ public class LoginService {
                 || !user.isActive()) {
             throw new InvalidCredentialsException();
         }
-        if (!user.isEmailVerified()) throw new EmailNotVerifiedException();
+        if (emailVerificationProperties.required() && !user.isEmailVerified()) {
+            throw new EmailNotVerifiedException();
+        }
         return refreshTokenService.issueInitial(user.getId());
     }
 

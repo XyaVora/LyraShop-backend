@@ -1,6 +1,7 @@
 package com.lyrashop.order.entity;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -29,6 +30,8 @@ import static org.hibernate.type.SqlTypes.DECIMAL;
 @Entity
 @Table(name = "orders")
 public class ShopOrder {
+
+    public static final Duration RETURN_WINDOW = Duration.ofDays(7);
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -81,6 +84,9 @@ public class ShopOrder {
     @Enumerated(EnumType.STRING)
     @Column(name = "payment_status", nullable = false, length = 20)
     private PaymentStatus paymentStatus;
+
+    @Column(name = "paid_at")
+    private Instant paidAt;
 
     @Column(name = "shipping_address", nullable = false, columnDefinition = "text")
     private String shippingAddress;
@@ -255,6 +261,7 @@ public class ShopOrder {
         }
         if (next == OrderStatus.DELIVERED && paymentMethod == PaymentMethod.COD) {
             paymentStatus = PaymentStatus.PAID;
+            if (paidAt == null) paidAt = Instant.now();
         }
         if (next == OrderStatus.DELIVERED) {
             deliveredAt = Instant.now();
@@ -276,13 +283,25 @@ public class ShopOrder {
     }
 
     public void requestReturn(String reason) {
-        if (status != OrderStatus.DELIVERED || returnStatus != null || deliveredAt == null
-                || deliveredAt.isBefore(Instant.now().minus(java.time.Duration.ofDays(30)))) {
+        Instant requestedAt = Instant.now();
+        if (!canRequestReturn(requestedAt)) {
             throw new IllegalStateException("return is not allowed");
         }
         returnStatus = "REQUESTED";
         returnReason = reason;
-        returnRequestedAt = Instant.now();
+        returnRequestedAt = requestedAt;
+    }
+
+    public boolean canRequestReturn(Instant now) {
+        return status == OrderStatus.DELIVERED
+                && returnStatus == null
+                && deliveredAt != null
+                && now != null
+                && now.isBefore(getReturnDeadline());
+    }
+
+    public Instant getReturnDeadline() {
+        return deliveredAt == null ? null : deliveredAt.plus(RETURN_WINDOW);
     }
 
     public void cancelReturnRequest() {
@@ -314,6 +333,7 @@ public class ShopOrder {
             throw new IllegalStateException("cancelled orders cannot be paid");
         }
         paymentStatus = PaymentStatus.PAID;
+        if (paidAt == null) paidAt = Instant.now();
     }
 
     public boolean isExpired(Instant now) {
@@ -340,6 +360,7 @@ public class ShopOrder {
     public OrderStatus getStatus() { return status; }
     public PaymentMethod getPaymentMethod() { return paymentMethod; }
     public PaymentStatus getPaymentStatus() { return paymentStatus; }
+    public Instant getPaidAt() { return paidAt; }
     public String getShippingAddress() { return shippingAddress; }
     public String getShippingPhone() { return shippingPhone; }
     public String getNote() { return note; }

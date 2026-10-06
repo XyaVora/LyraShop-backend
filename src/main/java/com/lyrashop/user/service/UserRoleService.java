@@ -28,8 +28,9 @@ public class UserRoleService {
             return user;
         }
         if (user.getRole() == UserRole.ADMIN
-                && role == UserRole.CUSTOMER
-                && users.countByRole(UserRole.ADMIN) <= 1) {
+                && role != UserRole.ADMIN
+                && user.isActive()
+                && users.countByRoleAndActiveTrue(UserRole.ADMIN) <= 1) {
             throw new LastAdminException();
         }
         user.assignRole(role);

@@ -11,6 +11,10 @@ public record ReviewResponse(
         UUID userId,
         int rating,
         String comment,
+        String moderationStatus,
+        String moderationNote,
+        UUID moderatedBy,
+        Instant moderatedAt,
         Instant createdAt
 ) {
     public static ReviewResponse from(Review review) {
@@ -20,6 +24,10 @@ public record ReviewResponse(
                 review.getUserId(),
                 review.getRating(),
                 review.getComment(),
+                review.getModerationStatus(),
+                review.getModerationNote(),
+                review.getModeratedBy(),
+                review.getModeratedAt(),
                 review.getCreatedAt()
         );
     }

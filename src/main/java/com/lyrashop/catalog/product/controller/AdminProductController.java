@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.lyrashop.catalog.product.dto.AdminProductDetailResponse;
@@ -24,6 +25,8 @@ import com.lyrashop.catalog.product.dto.ProductResponse;
 import com.lyrashop.catalog.product.dto.UpdateProductRequest;
 import com.lyrashop.catalog.product.service.ProductNotFoundException;
 import com.lyrashop.catalog.product.service.ProductService;
+import com.lyrashop.common.dto.PageResponse;
+import com.lyrashop.common.web.AdminPageable;
 
 import jakarta.validation.Valid;
 
@@ -38,13 +41,30 @@ public class AdminProductController {
         this.productService = productService;
     }
 
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','CATALOG_MANAGER')")
     @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
     public List<AdminProductResponse> list() {
         return productService.listForAdmin();
     }
 
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','CATALOG_MANAGER')")
+    @GetMapping(path = "/page", produces = MediaType.APPLICATION_JSON_VALUE)
+    public PageResponse<AdminProductResponse> page(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String query,
+            @RequestParam(required = false) Boolean active,
+            @RequestParam(defaultValue = "createdAt") String sort,
+            @RequestParam(defaultValue = "desc") String direction
+    ) {
+        var result = productService.pageForAdmin(query, active, AdminPageable.of(
+                page, size, sort, direction,
+                java.util.Set.of("name", "slug", "basePrice", "categoryId", "active", "createdAt", "updatedAt"),
+                "createdAt"));
+        return PageResponse.from(result, result.getContent());
+    }
+
+    @PreAuthorize("hasAnyRole('ADMIN','CATALOG_MANAGER')")
     @GetMapping(path = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
     public AdminProductDetailResponse get(@PathVariable String id) {
         try {
@@ -54,7 +74,7 @@ public class AdminProductController {
         }
     }
 
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','CATALOG_MANAGER')")
     @PostMapping(
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE
@@ -64,7 +84,7 @@ public class AdminProductController {
                 .body(ProductResponse.from(productService.create(request)));
     }
 
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','CATALOG_MANAGER')")
     @PutMapping(
             path = "/{id}",
             consumes = MediaType.APPLICATION_JSON_VALUE,
@@ -83,7 +103,7 @@ public class AdminProductController {
         }
     }
 
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','CATALOG_MANAGER')")
     @PatchMapping(path = "/{id}/deactivate")
     public ResponseEntity<Void> deactivate(@PathVariable String id) {
         try {
@@ -94,7 +114,7 @@ public class AdminProductController {
         return ResponseEntity.noContent().build();
     }
 
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','CATALOG_MANAGER')")
     @PatchMapping(path = "/{id}/activate")
     public ResponseEntity<Void> activate(@PathVariable String id) {
         try {

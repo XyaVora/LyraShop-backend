@@ -38,6 +38,19 @@ public class Review {
     @Column(name = "comment", columnDefinition = "text")
     private String comment;
 
+    @Column(name = "moderation_status", nullable = false, length = 20)
+    private String moderationStatus = "PUBLISHED";
+
+    @Column(name = "moderation_note", length = 500)
+    private String moderationNote;
+
+    @JdbcTypeCode(BINARY)
+    @Column(name = "moderated_by", length = 16)
+    private UUID moderatedBy;
+
+    @Column(name = "moderated_at")
+    private Instant moderatedAt;
+
     @CreationTimestamp(source = SourceType.DB)
     @Column(name = "created_at", nullable = false, updatable = false, columnDefinition = "datetime(6)")
     private Instant createdAt;
@@ -62,5 +75,16 @@ public class Review {
     public UUID getUserId() { return userId; }
     public int getRating() { return rating; }
     public String getComment() { return comment; }
+    public String getModerationStatus() { return moderationStatus; }
+    public String getModerationNote() { return moderationNote; }
+    public UUID getModeratedBy() { return moderatedBy; }
+    public Instant getModeratedAt() { return moderatedAt; }
     public Instant getCreatedAt() { return createdAt; }
+    public void moderate(String status, String note, UUID adminId) {
+        if (!"PUBLISHED".equals(status) && !"HIDDEN".equals(status)) throw new IllegalArgumentException("invalid moderation status");
+        this.moderationStatus = status;
+        this.moderationNote = note == null || note.isBlank() ? null : note.strip();
+        this.moderatedBy = adminId;
+        this.moderatedAt = Instant.now();
+    }
 }

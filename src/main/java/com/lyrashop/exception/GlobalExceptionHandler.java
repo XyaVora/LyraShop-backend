@@ -13,6 +13,7 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import com.lyrashop.promotion.service.PromotionConflictException;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
@@ -550,6 +551,9 @@ public class GlobalExceptionHandler {
     ResponseEntity<ApiErrorResponse> handleVariantNotFound(VariantNotFoundException e,HttpServletRequest r){return problem(HttpStatus.NOT_FOUND,ApiErrorResponse.of(404,"VARIANT_NOT_FOUND","Variant was not found",r.getRequestURI()));}
     @ExceptionHandler(VariantVersionConflictException.class)
     ResponseEntity<ApiErrorResponse> handleVariantVersionConflict(VariantVersionConflictException e,HttpServletRequest r){return problem(HttpStatus.CONFLICT,ApiErrorResponse.of(409,"VARIANT_VERSION_CONFLICT","Variant was modified by another request",r.getRequestURI()));}
+
+    @ExceptionHandler(PromotionConflictException.class)
+    ResponseEntity<ApiErrorResponse> handlePromotionConflict(PromotionConflictException e,HttpServletRequest r){return problem(HttpStatus.CONFLICT,ApiErrorResponse.of(409,"PROMOTION_CONFLICT",e.getMessage(),r.getRequestURI()));}
 
     ResponseEntity<ApiErrorResponse> handleUnexpected(
             Exception exception,

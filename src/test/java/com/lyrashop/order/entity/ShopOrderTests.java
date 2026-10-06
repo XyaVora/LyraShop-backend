@@ -8,6 +8,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 
 class ShopOrderTests {
 
@@ -39,6 +40,7 @@ class ShopOrderTests {
         progressing.transitionTo(OrderStatus.DELIVERED);
         assertThat(progressing.getStatus()).isEqualTo(OrderStatus.DELIVERED);
         assertThat(progressing.getPaymentStatus()).isEqualTo(PaymentStatus.PAID);
+        assertThat(progressing.getPaidAt()).isNotNull();
         assertThatThrownBy(() -> progressing.transitionTo(OrderStatus.PENDING))
                 .isInstanceOf(IllegalStateException.class);
     }
@@ -55,6 +57,7 @@ class ShopOrderTests {
         );
         order.markPaid();
         assertThat(order.getPaymentStatus()).isEqualTo(PaymentStatus.PAID);
+        assertThat(order.getPaidAt()).isNotNull();
         ShopOrder cancelled = ShopOrder.create(
                 UUID.randomUUID(),
                 new BigDecimal("10.00"),
@@ -172,5 +175,29 @@ class ShopOrderTests {
         assertThat(order.getPaymentStatus()).isEqualTo(PaymentStatus.REFUNDED);
         assertThat(order.getReturnStatus()).isEqualTo("REFUNDED");
         assertThat(order.getRefundedAmount()).isEqualByComparingTo("10.00");
+    }
+
+    @Test
+    void allowsReturnOnlyBeforeSevenDayDeadline() {
+        ShopOrder order = deliveredOrder();
+        Instant deliveredAt = Instant.parse("2026-01-01T00:00:00Z");
+        ReflectionTestUtils.setField(order, "deliveredAt", deliveredAt);
+
+        assertThat(order.getReturnDeadline()).isEqualTo(Instant.parse("2026-01-08T00:00:00Z"));
+        assertThat(order.canRequestReturn(deliveredAt.plusSeconds(7 * 24 * 60 * 60 - 1))).isTrue();
+        assertThat(order.canRequestReturn(deliveredAt.plusSeconds(7 * 24 * 60 * 60))).isFalse();
+        assertThat(order.canRequestReturn(deliveredAt.plusSeconds(8 * 24 * 60 * 60))).isFalse();
+    }
+
+    private static ShopOrder deliveredOrder() {
+        ShopOrder order = ShopOrder.create(
+                UUID.randomUUID(), new BigDecimal("10.00"), PaymentMethod.COD,
+                "12 Test Street", "0900000000", null
+        );
+        order.transitionTo(OrderStatus.CONFIRMED);
+        order.transitionTo(OrderStatus.PROCESSING);
+        order.transitionTo(OrderStatus.SHIPPING);
+        order.transitionTo(OrderStatus.DELIVERED);
+        return order;
     }
 }

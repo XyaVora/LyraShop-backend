@@ -776,6 +776,23 @@ VALUES
 
 
 -- =============================================================================
+-- V35__add_order_paid_at - records
+-- =============================================================================
+
+UPDATE orders
+SET paid_at = COALESCE(delivered_at, updated_at, created_at)
+WHERE payment_status IN ('PAID', 'REFUNDED')
+  AND paid_at IS NULL;
+
+
+-- =============================================================================
+-- V39__expand_admin_audit_logs - records
+-- =============================================================================
+
+UPDATE admin_audit_logs SET action = method WHERE action IS NULL;
+
+
+-- =============================================================================
 -- Final-schema data normalization
 -- =============================================================================
 

@@ -19,6 +19,8 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
@@ -147,6 +149,19 @@ public class ProductService {
         return productRepository.findAllByOrderByCreatedAtDescIdDesc().stream()
                 .map(AdminProductResponse::from)
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public Page<AdminProductResponse> pageForAdmin(String query, Boolean active, Pageable pageable) {
+        Specification<Product> specification = (root, ignored, builder) -> builder.conjunction();
+        if (query != null && !query.isBlank()) {
+            specification = specification.and(ProductSpecifications.keyword(query.strip()));
+        }
+        if (active != null) {
+            specification = specification.and((root, ignored, builder) ->
+                    builder.equal(root.get("active"), active));
+        }
+        return productRepository.findAll(specification, pageable).map(AdminProductResponse::from);
     }
 
     @Transactional(readOnly = true)

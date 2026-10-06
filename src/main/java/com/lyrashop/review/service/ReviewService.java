@@ -6,6 +6,9 @@ import java.util.UUID;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 
 import com.lyrashop.catalog.product.repository.ProductRepository;
 import com.lyrashop.catalog.product.service.ProductNotFoundException;
@@ -57,7 +60,7 @@ public class ReviewService {
         if (!products.existsByIdAndActiveTrue(productId)) {
             throw new ProductNotFoundException();
         }
-        return reviews.findAllByProductIdOrderByCreatedAtDescIdDesc(productId).stream()
+        return reviews.findAllByProductIdAndModerationStatusOrderByCreatedAtDescIdDesc(productId, "PUBLISHED").stream()
                 .map(ReviewResponse::from)
                 .toList();
     }
@@ -67,6 +70,26 @@ public class ReviewService {
         return reviews.findAllByOrderByCreatedAtDescIdDesc().stream()
                 .map(ReviewResponse::from)
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public Page<ReviewResponse> pageAll(String query, Integer rating, String moderationStatus, Pageable pageable) {
+        Specification<Review> specification = (root, ignored, builder) -> builder.conjunction();
+        if (query != null && !query.isBlank()) {
+            String pattern = "%" + query.strip().toLowerCase(java.util.Locale.ROOT) + "%";
+            specification = specification.and((root, ignored, builder) ->
+                    builder.like(builder.lower(root.get("comment")), pattern));
+        }
+        if (rating != null) specification = specification.and((root, ignored, builder) -> builder.equal(root.get("rating"), rating));
+        if (moderationStatus != null && !moderationStatus.isBlank()) specification = specification.and((root, ignored, builder) -> builder.equal(root.get("moderationStatus"), moderationStatus));
+        return reviews.findAll(specification, pageable).map(ReviewResponse::from);
+    }
+
+    @Transactional
+    public ReviewResponse moderate(Long reviewId, String status, String note, UUID adminId) {
+        Review review = reviews.findById(reviewId).orElseThrow(ReviewNotFoundException::new);
+        review.moderate(status, note, adminId);
+        return ReviewResponse.from(reviews.saveAndFlush(review));
     }
 
     @Transactional

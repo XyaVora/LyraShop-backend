@@ -15,6 +15,9 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RequestParam;
+import com.lyrashop.common.dto.PageResponse;
+import com.lyrashop.common.web.AdminPageable;
 
 import com.lyrashop.catalog.category.dto.AdminCategoryResponse;
 import com.lyrashop.catalog.category.dto.CategoryResponse;
@@ -36,13 +39,25 @@ public class AdminCategoryController {
         this.categoryService = categoryService;
     }
 
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','CATALOG_MANAGER')")
     @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
     public List<AdminCategoryResponse> list() {
         return categoryService.listForAdmin().stream().map(AdminCategoryResponse::from).toList();
     }
 
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','CATALOG_MANAGER')")
+    @GetMapping(path = "/page", produces = MediaType.APPLICATION_JSON_VALUE)
+    public PageResponse<AdminCategoryResponse> page(@RequestParam(defaultValue="0") int page,
+            @RequestParam(defaultValue="20") int size, @RequestParam(required=false) String query,
+            @RequestParam(required=false) Boolean active, @RequestParam(defaultValue="name") String sort,
+            @RequestParam(defaultValue="asc") String direction) {
+        var result = categoryService.pageForAdmin(query, active, AdminPageable.of(page,size,sort,direction,
+                java.util.Set.of("name","slug","parentId","active","createdAt","updatedAt"),"name"));
+        var content = result.getContent().stream().map(AdminCategoryResponse::from).toList();
+        return PageResponse.from(result, content);
+    }
+
+    @PreAuthorize("hasAnyRole('ADMIN','CATALOG_MANAGER')")
     @PostMapping(
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE
@@ -54,7 +69,7 @@ public class AdminCategoryController {
                 .body(CategoryResponse.from(categoryService.create(request)));
     }
 
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','CATALOG_MANAGER')")
     @PutMapping(
             path = "/{id}",
             consumes = MediaType.APPLICATION_JSON_VALUE,
@@ -67,14 +82,14 @@ public class AdminCategoryController {
         return ResponseEntity.ok(CategoryResponse.from(categoryService.update(categoryId(id), request)));
     }
 
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','CATALOG_MANAGER')")
     @PatchMapping(path = "/{id}/deactivate")
     public ResponseEntity<Void> deactivate(@PathVariable String id) {
         categoryService.deactivate(categoryId(id));
         return ResponseEntity.noContent().build();
     }
 
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','CATALOG_MANAGER')")
     @PatchMapping(path = "/{id}/activate")
     public ResponseEntity<Void> activate(@PathVariable String id) {
         categoryService.activate(categoryId(id));

@@ -6,6 +6,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties("app.security.email-verification")
 public record EmailVerificationProperties(
+        boolean required,
         String frontendUrl,
         String fromAddress,
         Duration tokenTtl,

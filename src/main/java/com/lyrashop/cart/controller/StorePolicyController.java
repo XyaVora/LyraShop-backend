@@ -2,6 +2,8 @@ package com.lyrashop.cart.controller;
 
 import java.math.BigDecimal;
 
+import com.lyrashop.order.entity.ShopOrder;
+
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -22,6 +24,6 @@ public class StorePolicyController {
     @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
     public StorePolicyResponse get() {
         return new StorePolicyResponse(StorePricing.freeShippingThreshold(), StorePricing.standardShippingFee(),
-                StorePricing.giftWrapFee(), 30);
+                StorePricing.giftWrapFee(), (int) ShopOrder.RETURN_WINDOW.toDays());
     }
 }

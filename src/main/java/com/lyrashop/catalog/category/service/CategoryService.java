@@ -11,6 +11,9 @@ import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.validation.annotation.Validated;
 
 import com.lyrashop.catalog.category.dto.CreateCategoryRequest;
@@ -120,6 +123,19 @@ public class CategoryService {
                 .stream()
                 .map(CategoryResult::from)
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public Page<CategoryResult> pageForAdmin(String query, Boolean active, Pageable pageable) {
+        Specification<Category> specification = (root, ignored, builder) -> builder.conjunction();
+        if (query != null && !query.isBlank()) {
+            String pattern = "%" + query.strip().toLowerCase(java.util.Locale.ROOT) + "%";
+            specification = specification.and((root, ignored, builder) -> builder.or(
+                    builder.like(builder.lower(root.get("name")), pattern),
+                    builder.like(builder.lower(root.get("slug")), pattern)));
+        }
+        if (active != null) specification = specification.and((root, ignored, builder) -> builder.equal(root.get("active"), active));
+        return categoryRepository.findAll(specification, pageable).map(CategoryResult::from);
     }
 
     @Transactional

@@ -6,13 +6,14 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import com.lyrashop.order.entity.Voucher;
 import jakarta.persistence.LockModeType;
 
-public interface VoucherRepository extends JpaRepository<Voucher, UUID> {
+public interface VoucherRepository extends JpaRepository<Voucher, UUID>, JpaSpecificationExecutor<Voucher> {
     List<Voucher> findAllByOrderByCodeAsc();
     boolean existsByCode(String code);
     @Query("select v from Voucher v where v.active = true and v.startsAt <= :now and v.endsAt > :now order by v.code")

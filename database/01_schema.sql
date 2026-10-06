@@ -1,4 +1,4 @@
--- Generated from Flyway V1-V34. Do not edit by hand.
+-- Generated from Flyway V1-V41. Do not edit by hand.
 -- MySQL 8.0+. DESTRUCTIVE: recreates the local inspection database.
 SET NAMES utf8mb4;
 SET time_zone = '+00:00';
@@ -768,5 +768,97 @@ CREATE TABLE admin_audit_logs (
     KEY idx_admin_audit_admin_created (admin_id, created_at),
     CONSTRAINT fk_admin_audit_admin FOREIGN KEY (admin_id) REFERENCES users(id) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+
+
+-- =============================================================================
+-- V35__add_order_paid_at - structure
+-- =============================================================================
+
+ALTER TABLE orders
+    ADD COLUMN paid_at DATETIME(6) NULL AFTER payment_status,
+    ADD INDEX idx_orders_paid_at (paid_at);
+
+
+-- =============================================================================
+-- V36__complete_inventory_movement_history - structure
+-- =============================================================================
+
+ALTER TABLE inventory_adjustments
+    MODIFY COLUMN admin_id BINARY(16) NULL,
+    ADD COLUMN movement_type VARCHAR(30) NOT NULL DEFAULT 'MANUAL' AFTER admin_id,
+    ADD COLUMN order_id BINARY(16) NULL AFTER movement_type,
+    ADD KEY idx_inventory_adjustment_order (order_id),
+    ADD CONSTRAINT fk_inventory_adjustment_order
+        FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE RESTRICT;
+
+
+-- =============================================================================
+-- V37__admin_notification_reads - structure
+-- =============================================================================
+
+CREATE TABLE admin_notification_reads (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    admin_id BINARY(16) NOT NULL,
+    notification_key VARCHAR(120) NOT NULL,
+    read_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_admin_notification_read (admin_id, notification_key),
+    KEY idx_admin_notification_read_admin (admin_id, read_at),
+    CONSTRAINT fk_admin_notification_read_admin
+        FOREIGN KEY (admin_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+
+
+-- =============================================================================
+-- V38__review_moderation - structure
+-- =============================================================================
+
+ALTER TABLE reviews
+    ADD COLUMN moderation_status VARCHAR(20) NOT NULL DEFAULT 'PUBLISHED' AFTER comment,
+    ADD COLUMN moderation_note VARCHAR(500) NULL AFTER moderation_status,
+    ADD COLUMN moderated_by BINARY(16) NULL AFTER moderation_note,
+    ADD COLUMN moderated_at DATETIME(6) NULL AFTER moderated_by,
+    ADD KEY idx_reviews_moderation_created (moderation_status, created_at),
+    ADD CONSTRAINT fk_reviews_moderated_by FOREIGN KEY (moderated_by) REFERENCES users(id) ON DELETE SET NULL;
+
+
+-- =============================================================================
+-- V39__expand_admin_audit_logs - structure
+-- =============================================================================
+
+ALTER TABLE admin_audit_logs
+    ADD COLUMN action VARCHAR(80) NULL AFTER method,
+    ADD COLUMN resource_type VARCHAR(80) NULL AFTER action,
+    ADD COLUMN resource_id VARCHAR(120) NULL AFTER resource_type,
+    ADD KEY idx_admin_audit_resource (resource_type, resource_id, created_at),
+    ADD KEY idx_admin_audit_status_created (response_status, created_at);
+
+
+-- =============================================================================
+-- V40__granular_admin_roles - structure
+-- =============================================================================
+
+ALTER TABLE users
+    DROP CHECK chk_users_role,
+    ADD CONSTRAINT chk_users_role CHECK (
+        role IN ('CUSTOMER', 'ADMIN', 'CATALOG_MANAGER', 'ORDER_MANAGER', 'SUPPORT')
+    );
+
+
+-- =============================================================================
+-- V41__customer_support_notes - structure
+-- =============================================================================
+
+CREATE TABLE customer_support_notes (
+    id BINARY(16) NOT NULL,
+    customer_id BINARY(16) NOT NULL,
+    created_by BINARY(16) NOT NULL,
+    note VARCHAR(2000) NOT NULL,
+    created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    PRIMARY KEY (id),
+    KEY idx_customer_support_notes_customer_created (customer_id, created_at),
+    CONSTRAINT fk_customer_support_notes_customer FOREIGN KEY (customer_id) REFERENCES users(id),
+    CONSTRAINT fk_customer_support_notes_created_by FOREIGN KEY (created_by) REFERENCES users(id)
+);
 
 SET FOREIGN_KEY_CHECKS = 1;

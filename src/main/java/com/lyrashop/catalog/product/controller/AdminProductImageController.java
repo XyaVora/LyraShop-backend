@@ -37,7 +37,7 @@ public class AdminProductImageController {
         this.productImageService = productImageService;
     }
 
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','CATALOG_MANAGER')")
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<ProductImageResponse> create(
             @PathVariable String productId,
@@ -53,7 +53,7 @@ public class AdminProductImageController {
                 .body(ProductImageResponse.from(productImageService.create(productUuid, request)));
     }
 
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','CATALOG_MANAGER')")
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<ProductImageResponse> upload(
             @PathVariable String productId,
@@ -74,7 +74,7 @@ public class AdminProductImageController {
                 ));
     }
 
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','CATALOG_MANAGER')")
     @PutMapping(path = "/{imageId}", consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
     public ProductImageResponse update(@PathVariable String productId, @PathVariable Long imageId,
@@ -82,7 +82,7 @@ public class AdminProductImageController {
         return ProductImageResponse.from(productImageService.update(productId(productId), imageId, request));
     }
 
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','CATALOG_MANAGER')")
     @DeleteMapping("/{imageId}")
     public ResponseEntity<Void> delete(@PathVariable String productId, @PathVariable Long imageId) {
         productImageService.delete(productId(productId), imageId);

@@ -12,6 +12,9 @@ import java.util.HashSet;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 
 import com.lyrashop.cart.entity.Cart;
 import com.lyrashop.cart.entity.CartItem;
@@ -23,6 +26,8 @@ import com.lyrashop.catalog.product.entity.Product;
 import com.lyrashop.catalog.product.repository.ProductRepository;
 import com.lyrashop.catalog.variant.entity.ProductVariant;
 import com.lyrashop.catalog.variant.repository.ProductVariantRepository;
+import com.lyrashop.catalog.variant.repository.InventoryAdjustmentRepository;
+import com.lyrashop.catalog.variant.entity.InventoryAdjustment;
 import com.lyrashop.catalog.variant.service.VariantNotFoundException;
 import com.lyrashop.order.dto.CreateOrderRequest;
 import com.lyrashop.order.dto.OrderResponse;
@@ -71,6 +76,7 @@ public class OrderService {
     private final ReturnEvidenceUploadService evidenceUploads;
     private final OrderProperties orderProperties;
     private final OrderRefundRepository refunds;
+    private final InventoryAdjustmentRepository inventoryAdjustments;
 
     public OrderService(
             ShopOrderRepository orders,
@@ -89,7 +95,8 @@ public class OrderService {
             CustomerReturnEvidenceRepository returnEvidence,
             ReturnEvidenceUploadService evidenceUploads,
             OrderProperties orderProperties,
-            OrderRefundRepository refunds
+            OrderRefundRepository refunds,
+            InventoryAdjustmentRepository inventoryAdjustments
     ) {
         this.orders = orders;
         this.carts = carts;
@@ -108,6 +115,7 @@ public class OrderService {
         this.evidenceUploads = evidenceUploads;
         this.orderProperties = orderProperties;
         this.refunds = refunds;
+        this.inventoryAdjustments = inventoryAdjustments;
     }
 
     @Transactional
@@ -194,6 +202,13 @@ public class OrderService {
         order.assignPricing(subtotal, discount, voucher.shippingFee(), giftWrapFee, total, voucher.code());
         order.applyLoyalty(request.loyaltyCoins());
         ShopOrder saved = orders.saveAndFlush(order);
+        for (OrderItem item : saved.getItems()) {
+            ProductVariant variant = variants.findById(item.getVariantId()).orElseThrow(VariantNotFoundException::new);
+            inventoryAdjustments.save(InventoryAdjustment.system(
+                    item.getProductId(), item.getVariantId(), saved.getId(), "ORDER_PLACED",
+                    variant.getStock() + item.getQuantity(), variant.getStock(),
+                    "Trừ tồn khi đặt đơn " + saved.getId()));
+        }
         loyalty.spendForOrder(userId, saved, request.loyaltyCoins(), total);
         recordTracking(saved.getId(), "ORDER_PLACED", "Đơn hàng đã được tiếp nhận", null);
         vouchers.recordRedemption(userId, voucher.code(), saved.getId());
@@ -259,6 +274,36 @@ public class OrderService {
     }
 
     @Transactional(readOnly = true)
+    public Page<OrderResponse> pageAll(String query,
+            com.lyrashop.order.entity.OrderStatus status,
+            com.lyrashop.order.entity.PaymentStatus paymentStatus,
+            Pageable pageable) {
+        Specification<ShopOrder> specification = (root, ignored, builder) -> builder.conjunction();
+        if (query != null && !query.isBlank()) {
+            String pattern = "%" + query.strip().toLowerCase(Locale.ROOT) + "%";
+            Specification<ShopOrder> textSearch = (root, ignored, builder) -> builder.or(
+                    builder.like(builder.lower(root.get("shippingPhone")), pattern),
+                    builder.like(builder.lower(root.get("trackingCode")), pattern),
+                    builder.like(builder.lower(root.get("voucherCode")), pattern));
+            try {
+                UUID id = UUID.fromString(query.strip());
+                textSearch = textSearch.or((root, ignored, builder) -> builder.equal(root.get("id"), id));
+            } catch (IllegalArgumentException ignored) {
+                // Free text does not need to be a complete UUID.
+            }
+            specification = specification.and(textSearch);
+        }
+        if (status != null) {
+            specification = specification.and((root, ignored, builder) -> builder.equal(root.get("status"), status));
+        }
+        if (paymentStatus != null) {
+            specification = specification.and((root, ignored, builder) ->
+                    builder.equal(root.get("paymentStatus"), paymentStatus));
+        }
+        return orders.findAll(specification, pageable).map(OrderResponse::from);
+    }
+
+    @Transactional(readOnly = true)
     public OrderResponse get(UUID orderId) {
         return OrderResponse.from(orders.findById(orderId).orElseThrow(OrderNotFoundException::new));
     }
@@ -272,7 +317,7 @@ public class OrderService {
         } catch (IllegalStateException exception) {
             throw new InvalidOrderStatusException();
         }
-        restoreStock(order);
+        restoreStock(order, "ORDER_CANCELLED", "Hoàn tồn do khách hủy đơn");
         vouchers.release(orderId);
         loyalty.refundCancelledOrder(order);
         ShopOrder saved = orders.saveAndFlush(order);
@@ -288,7 +333,7 @@ public class OrderService {
         } catch (IllegalStateException exception) {
             throw new InvalidOrderStatusException();
         }
-        restoreStock(order);
+        restoreStock(order, "ORDER_CANCELLED", "Hoàn tồn do quản trị viên hủy đơn");
         vouchers.release(orderId);
         loyalty.refundCancelledOrder(order);
         ShopOrder saved = orders.saveAndFlush(order);
@@ -395,6 +440,20 @@ public class OrderService {
     }
 
     @Transactional(readOnly = true)
+    public Page<ReturnRequestResponse> pageReturnRequestsForAdmin(String query, String status, Pageable pageable) {
+        Specification<CustomerReturnRequest> specification = (root, ignored, builder) -> builder.conjunction();
+        if (query != null && !query.isBlank()) {
+            String pattern = "%" + query.strip().toLowerCase(Locale.ROOT) + "%";
+            specification = specification.and((root, ignored, builder) -> builder.like(builder.lower(root.get("reason")), pattern));
+            try { UUID id = UUID.fromString(query.strip()); specification = specification.or((root, ignored, builder) -> builder.equal(root.get("orderId"), id)); }
+            catch (IllegalArgumentException ignored) { }
+        }
+        if ("OPEN".equals(status)) specification = specification.and((root, ignored, builder) -> root.get("status").in("REQUESTED", "APPROVED"));
+        else if (status != null && !status.isBlank()) specification = specification.and((root, ignored, builder) -> builder.equal(root.get("status"), status));
+        return returnRequests.findAll(specification, pageable).map(this::returnResponse);
+    }
+
+    @Transactional(readOnly = true)
     public ReturnRequestResponse getReturnRequestForAdmin(UUID orderId) {
         orders.findById(orderId).orElseThrow(OrderNotFoundException::new);
         return returnResponse(returnRequests.findByOrderId(orderId).orElseThrow(OrderNotFoundException::new));
@@ -449,8 +508,12 @@ public class OrderService {
             if (item == null) throw new InvalidOrderStatusException();
             ProductVariant variant = variants.findForStockUpdate(item.getVariantId())
                     .orElseThrow(VariantNotFoundException::new);
+            int before = variant.getStock();
             variant.incrementStock(returned.getQuantity());
             variants.save(variant);
+            inventoryAdjustments.save(InventoryAdjustment.system(
+                    item.getProductId(), item.getVariantId(), orderId, "RETURN_RECEIVED",
+                    before, variant.getStock(), "Nhập lại hàng hoàn của đơn " + orderId));
         }
         orders.save(order);
         returnRequests.saveAndFlush(request);
@@ -555,19 +618,23 @@ public class OrderService {
         ShopOrder order = orders.findForUpdate(orderId).orElse(null);
         if (order == null || !order.isExpired(now)) return;
         order.expire(now);
-        restoreStock(order);
+        restoreStock(order, "ORDER_EXPIRED", "Hoàn tồn do đơn hết hạn");
         vouchers.release(orderId);
         loyalty.refundCancelledOrder(order);
         orders.saveAndFlush(order);
         recordTracking(orderId, "EXPIRED", "Đơn hàng đã tự động hết hạn", null);
     }
 
-    private void restoreStock(ShopOrder order) {
+    private void restoreStock(ShopOrder order, String movementType, String reason) {
         for (var item : order.getItems()) {
             ProductVariant variant = variants.findForStockUpdate(item.getVariantId())
                     .orElseThrow(VariantNotFoundException::new);
+            int before = variant.getStock();
             variant.incrementStock(item.getQuantity());
             variants.save(variant);
+            inventoryAdjustments.save(InventoryAdjustment.system(
+                    item.getProductId(), item.getVariantId(), order.getId(), movementType,
+                    before, variant.getStock(), reason + " " + order.getId()));
         }
     }
 

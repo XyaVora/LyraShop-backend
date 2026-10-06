@@ -7,6 +7,7 @@ import java.util.UUID;
 
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -17,11 +18,22 @@ import com.lyrashop.dashboard.repository.BestSellerProjection;
 import com.lyrashop.dashboard.repository.OrderStatusCount;
 import com.lyrashop.order.entity.ShopOrder;
 
-public interface ShopOrderRepository extends JpaRepository<ShopOrder, UUID> {
+public interface ShopOrderRepository extends JpaRepository<ShopOrder, UUID>, JpaSpecificationExecutor<ShopOrder> {
 
     List<ShopOrder> findAllByUserIdOrderByCreatedAtDescIdDesc(UUID userId);
 
     List<ShopOrder> findAllByOrderByCreatedAtDescIdDesc();
+
+    @Query("""
+            select shopOrder from ShopOrder shopOrder
+            where shopOrder.returnStatus = 'REQUESTED'
+               or shopOrder.status in (
+                    com.lyrashop.order.entity.OrderStatus.PENDING,
+                    com.lyrashop.order.entity.OrderStatus.CONFIRMED,
+                    com.lyrashop.order.entity.OrderStatus.PROCESSING)
+            order by shopOrder.updatedAt desc, shopOrder.id desc
+            """)
+    List<ShopOrder> findActionableForAdmin(Pageable pageable);
 
     @Query("""
             select shopOrder from ShopOrder shopOrder
@@ -88,7 +100,8 @@ public interface ShopOrderRepository extends JpaRepository<ShopOrder, UUID> {
                    coalesce(sum(item.subtotal), 0) as revenue
             from ShopOrder shopOrder
             join shopOrder.items item
-            where shopOrder.status <> com.lyrashop.order.entity.OrderStatus.CANCELLED
+            where shopOrder.paymentStatus = com.lyrashop.order.entity.PaymentStatus.PAID
+              and shopOrder.status <> com.lyrashop.order.entity.OrderStatus.CANCELLED
             group by item.productId
             order by sum(item.quantity) desc, sum(item.subtotal) desc, item.productId asc
             """)

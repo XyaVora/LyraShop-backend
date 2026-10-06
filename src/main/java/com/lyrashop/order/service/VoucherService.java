@@ -9,6 +9,9 @@ import java.util.UUID;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import com.lyrashop.order.dto.AdminVoucherRequest;
 import com.lyrashop.order.dto.AdminVoucherResponse;
 
@@ -58,6 +61,7 @@ public class VoucherService {
     }
 
     @Transactional(readOnly=true) public List<AdminVoucherResponse> adminList(){return vouchers.findAllByOrderByCodeAsc().stream().map(v->AdminVoucherResponse.from(v,redemptions.countByVoucherId(v.getId()))).toList();}
+    @Transactional(readOnly=true) public Page<AdminVoucherResponse> adminPage(String query,Boolean active,Pageable pageable){Specification<Voucher> specification=(root,ignored,builder)->builder.conjunction();if(query!=null&&!query.isBlank()){String pattern="%"+query.strip().toLowerCase(Locale.ROOT)+"%";specification=specification.and((root,ignored,builder)->builder.or(builder.like(builder.lower(root.get("code")),pattern),builder.like(builder.lower(root.get("label")),pattern)));}if(active!=null)specification=specification.and((root,ignored,builder)->builder.equal(root.get("active"),active));return vouchers.findAll(specification,pageable).map(v->AdminVoucherResponse.from(v,redemptions.countByVoucherId(v.getId())));}
     @Transactional public AdminVoucherResponse adminCreate(AdminVoucherRequest r){String code=canonicalCode(r.code());if(vouchers.existsByCode(code))throw new InvalidVoucherException();validateAdminRequest(r);Voucher v=vouchers.saveAndFlush(Voucher.create(code,r.label().strip(),r.type(),r.discountType(),r.discountValue(),r.maxDiscountAmount(),r.minimumOrderAmount(),r.startsAt(),r.endsAt(),r.totalUsageLimit(),r.perUserLimit(),r.active()));return AdminVoucherResponse.from(v,0);}
     @Transactional public AdminVoucherResponse adminUpdate(UUID id,AdminVoucherRequest r){Voucher v=vouchers.findById(id).orElseThrow(InvalidVoucherException::new);validateAdminRequest(r);v.update(r.label().strip(),r.type(),r.discountType(),r.discountValue(),r.maxDiscountAmount(),r.minimumOrderAmount(),r.startsAt(),r.endsAt(),r.totalUsageLimit(),r.perUserLimit(),r.active());return AdminVoucherResponse.from(vouchers.saveAndFlush(v),redemptions.countByVoucherId(id));}
     @Transactional public void adminDeactivate(UUID id){Voucher v=vouchers.findById(id).orElseThrow(InvalidVoucherException::new);v.deactivate();vouchers.saveAndFlush(v);}

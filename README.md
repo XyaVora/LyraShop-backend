@@ -80,7 +80,7 @@ chmod +x scripts/local-up.sh scripts/local-down.sh
 
 The script starts MySQL on `127.0.0.1:3307` (container port `3306`), then runs
 the API with the `dev` profile. On an empty database, Flyway creates
-`flyway_schema_history`, applies V1-V34, and loads the sample catalog.
+`flyway_schema_history`, applies V1-V41, and loads the sample catalog.
 
 - API: `http://127.0.0.1:8080`
 - Readiness: `http://127.0.0.1:8081/actuator/health/readiness`
@@ -124,6 +124,25 @@ Flyway's sample users are also available on a database initialized from V1:
 
 The `dev` profile is for this machine only. Production still uses `compose.yaml` with secret files and no published database port.
 
+### Current internal-testing scope
+
+- Store operations use the single `ADMIN` account. The current workflow does
+  not require separate employee accounts or employee permissions.
+- Customer accounts can browse products, manage cart and wishlist, place COD
+  orders, track orders, review completed purchases, and submit return requests.
+- VNPay is shown only when valid VNPay credentials are configured. Without
+  those credentials, COD remains the supported checkout method.
+- Refund actions in the admin UI record a refund that has already been sent
+  through the real payment channel; they do not transfer money.
+- The storefront terms and privacy pages are marked as internal-testing
+  documents and must receive legal review before public launch.
+
+Before public launch, configure and verify TLS/DNS, production SMTP, VNPay and
+automated refund reconciliation, a shipping carrier, e-invoices/tax handling,
+database backups and restore drills, monitoring/alerts, and final legal/privacy
+content. Do not expose the Vite development servers or the default local admin
+credentials to the Internet.
+
 On first `dev` boot with no ADMIN row, the API creates `admin@lyrashop.local` /
 `AdminPass1234` (override with `BOOTSTRAP_ADMIN_EMAIL` and
 `BOOTSTRAP_ADMIN_PASSWORD`). Production leaves those empty unless you set the
@@ -136,7 +155,7 @@ cannot be demoted.
 The SQL exports are for inspection or review in a separate MySQL database.
 They are not the normal way to initialize the backend database.
 
-- `lyrashop_schema.sql` and `database/01_schema.sql` contain the V1-V34
+- `lyrashop_schema.sql` and `database/01_schema.sql` contain the V1-V41
   structure. They are destructive: each run drops and recreates
   `lyrashop_db`.
 - `database/02_seed_data.sql` loads the sample users, catalog, orders,
@@ -157,7 +176,7 @@ If the backend must intentionally use a database imported through Workbench,
 run both files first, then establish Flyway history once:
 
 ```powershell
-.\gradlew.bat bootRun --args="--spring.profiles.active=dev --spring.flyway.baseline-on-migrate=true --spring.flyway.baseline-version=34"
+.\gradlew.bat bootRun --args="--spring.profiles.active=dev --spring.flyway.baseline-on-migrate=true --spring.flyway.baseline-version=41"
 ```
 
 After the baseline succeeds, use the normal command:
@@ -167,7 +186,7 @@ After the baseline succeeds, use the normal command:
 ```
 
 Never baseline a schema-only import before loading `02_seed_data.sql`.
-Baselining tells Flyway to skip V1-V34, including their seed operations; the
+Baselining tells Flyway to skip V1-V41, including their seed operations; the
 result is an empty catalog and missing sample accounts.
 
 Check an imported database with:
@@ -189,7 +208,7 @@ applies `src/main/resources/db/migration` there automatically.
 
 - `Found non-empty schema ... but no schema history table`: either recreate an
   empty database and let Flyway migrate it, or baseline only after a complete
-  V32 Workbench schema-and-seed import.
+  V41 Workbench schema-and-seed import.
 - `Duplicate column name`: an old or partial schema is being reused. Do not
   continue individual `ALTER TABLE` statements; use the current destructive
   snapshot for an inspection database, or reset the Flyway-managed local
@@ -198,7 +217,7 @@ applies `src/main/resources/db/migration` there automatically.
   load `database/02_seed_data.sql` into an intentionally baselined Workbench
   database.
 - `Brand settings are not configured`: V28 repairs the required singleton on
-  Flyway-managed databases. A database snapshot baselined at V32 must have the
+  Flyway-managed databases. A database snapshot baselined at V41 must have the
   seed file loaded before baseline.
 
 ## Authentication API

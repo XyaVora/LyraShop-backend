@@ -52,9 +52,20 @@ class UserRoleServiceTests {
         User admin = User.createAdmin("admin@example.com", PASSWORD_HASH, "Admin", null);
         UUID id = UUID.fromString("00000000-0000-0000-0000-000000000002");
         when(users.findById(id)).thenReturn(Optional.of(admin));
-        when(users.countByRole(UserRole.ADMIN)).thenReturn(1L);
+        when(users.countByRoleAndActiveTrue(UserRole.ADMIN)).thenReturn(1L);
 
         assertThatThrownBy(() -> service.assignRole(id, UserRole.CUSTOMER))
+                .isInstanceOf(LastAdminException.class);
+    }
+
+    @Test
+    void refusesToChangeTheLastAdminToAnOperationalRole() {
+        User admin = User.createAdmin("admin@example.com", PASSWORD_HASH, "Admin", null);
+        UUID id = UUID.fromString("00000000-0000-0000-0000-000000000005");
+        when(users.findById(id)).thenReturn(Optional.of(admin));
+        when(users.countByRoleAndActiveTrue(UserRole.ADMIN)).thenReturn(1L);
+
+        assertThatThrownBy(() -> service.assignRole(id, UserRole.CATALOG_MANAGER))
                 .isInstanceOf(LastAdminException.class);
     }
 

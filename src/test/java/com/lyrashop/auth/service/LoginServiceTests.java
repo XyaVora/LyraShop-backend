@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.lyrashop.auth.dto.LoginRequest;
+import com.lyrashop.config.EmailVerificationProperties;
 import com.lyrashop.exception.AuthenticationCapacityExceededException;
 import com.lyrashop.exception.InvalidCredentialsException;
 import com.lyrashop.security.BoundedPasswordOperations;
@@ -34,11 +35,13 @@ class LoginServiceTests {
             mock(BoundedPasswordOperations.class);
     private final DummyPasswordHash dummyPasswordHash = mock(DummyPasswordHash.class);
     private final RefreshTokenService refreshTokenService = mock(RefreshTokenService.class);
+    private final EmailVerificationProperties emailVerificationProperties = mock(EmailVerificationProperties.class);
     private final LoginService loginService = new LoginService(
             userRepository,
             passwordOperations,
             dummyPasswordHash,
-            refreshTokenService
+            refreshTokenService,
+            emailVerificationProperties
     );
 
     @Test
@@ -109,6 +112,7 @@ class LoginServiceTests {
 
     @Test
     void verifiedCredentialsCannotLoginBeforeEmailVerification() {
+        when(emailVerificationProperties.required()).thenReturn(true);
         User user = activeUser();
         when(user.isEmailVerified()).thenReturn(false);
         when(userRepository.findByEmail("customer@example.com")).thenReturn(Optional.of(user));
@@ -117,6 +121,22 @@ class LoginServiceTests {
         assertThatThrownBy(() -> loginService.login(new LoginRequest("customer@example.com", RAW_PASSWORD)))
                 .isInstanceOf(EmailNotVerifiedException.class);
         verifyNoInteractions(refreshTokenService);
+    }
+
+    @Test
+    void unverifiedAccountCanLoginWhenVerificationIsDisabled() {
+        User user = activeUser();
+        IssuedAuthentication issuedAuthentication = issuedAuthentication();
+        when(user.isEmailVerified()).thenReturn(false);
+        when(userRepository.findByEmail("customer@example.com")).thenReturn(Optional.of(user));
+        when(passwordOperations.matches(RAW_PASSWORD, STORED_HASH)).thenReturn(true);
+        when(refreshTokenService.issueInitial(user.getId())).thenReturn(issuedAuthentication);
+
+        IssuedAuthentication result = loginService.login(
+                new LoginRequest("customer@example.com", RAW_PASSWORD));
+
+        assertThat(result).isSameAs(issuedAuthentication);
+        verify(refreshTokenService).issueInitial(user.getId());
     }
 
     @Test

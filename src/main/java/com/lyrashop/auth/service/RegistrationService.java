@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.validation.annotation.Validated;
 
 import com.lyrashop.auth.dto.RegisterRequest;
+import com.lyrashop.config.EmailVerificationProperties;
 import com.lyrashop.exception.EmailAlreadyRegisteredException;
 import com.lyrashop.exception.InvalidRegistrationDataException;
 import com.lyrashop.security.BoundedPasswordOperations;
@@ -31,15 +32,18 @@ public class RegistrationService {
     private final UserRepository userRepository;
     private final BoundedPasswordOperations passwordOperations;
     private final EmailVerificationService emailVerificationService;
+    private final EmailVerificationProperties emailVerificationProperties;
 
     public RegistrationService(
             UserRepository userRepository,
             BoundedPasswordOperations passwordOperations,
-            EmailVerificationService emailVerificationService
+            EmailVerificationService emailVerificationService,
+            EmailVerificationProperties emailVerificationProperties
     ) {
         this.userRepository = userRepository;
         this.passwordOperations = passwordOperations;
         this.emailVerificationService = emailVerificationService;
+        this.emailVerificationProperties = emailVerificationProperties;
     }
 
     public RegistrationResult register(@NotNull @Valid RegisterRequest request) {
@@ -55,16 +59,25 @@ public class RegistrationService {
             throw new EmailAlreadyRegisteredException();
         }
 
-        User user = User.createUnverifiedCustomer(
-                canonicalEmail,
-                passwordHash,
-                request.fullName(),
-                request.phone()
-        );
+        User user = emailVerificationProperties.required()
+                ? User.createUnverifiedCustomer(
+                        canonicalEmail,
+                        passwordHash,
+                        request.fullName(),
+                        request.phone()
+                )
+                : User.createCustomer(
+                        canonicalEmail,
+                        passwordHash,
+                        request.fullName(),
+                        request.phone()
+                );
 
         try {
             User saved = userRepository.saveAndFlush(user);
-            emailVerificationService.issue(saved, false);
+            if (emailVerificationProperties.required()) {
+                emailVerificationService.issue(saved, false);
+            }
             return RegistrationResult.from(saved);
         } catch (DataIntegrityViolationException exception) {
             if (isEmailUniqueViolation(exception)) {

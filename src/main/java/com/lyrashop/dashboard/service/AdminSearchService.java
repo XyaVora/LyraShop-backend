@@ -32,26 +32,30 @@ public class AdminSearchService {
     }
 
     @Transactional(readOnly = true)
-    public List<AdminSearchResultResponse> search(String rawQuery) {
+    public List<AdminSearchResultResponse> search(String rawQuery, String role) {
         String query = rawQuery == null ? "" : rawQuery.strip();
         if (query.length() < 2) return List.of();
         PageRequest firstFour = PageRequest.of(0, PER_TYPE_LIMIT);
         List<AdminSearchResultResponse> result = new ArrayList<>();
 
-        products.searchForAdmin(query, firstFour).forEach(product -> result.add(
-                new AdminSearchResultResponse("PRODUCT", product.getId(), product.getName(),
-                        product.getSlug(), "/products/" + product.getId())));
+        if ("ADMIN".equals(role) || "CATALOG_MANAGER".equals(role)) {
+            products.searchForAdmin(query, firstFour).forEach(product -> result.add(
+                    new AdminSearchResultResponse("PRODUCT", product.getId(), product.getName(),
+                            product.getSlug(), "/products/" + product.getId())));
+        }
 
-        UUID orderId = parseUuid(query);
-        if (orderId != null) orders.findById(orderId).ifPresent(order -> result.add(orderResult(order)));
-        orders.searchForAdmin(query, firstFour).stream()
-                .filter(order -> orderId == null || !order.getId().equals(orderId))
-                .limit(PER_TYPE_LIMIT)
-                .forEach(order -> result.add(orderResult(order)));
+        if (!"CATALOG_MANAGER".equals(role)) {
+            UUID orderId = parseUuid(query);
+            if (orderId != null) orders.findById(orderId).ifPresent(order -> result.add(orderResult(order)));
+            orders.searchForAdmin(query, firstFour).stream()
+                    .filter(order -> orderId == null || !order.getId().equals(orderId))
+                    .limit(PER_TYPE_LIMIT)
+                    .forEach(order -> result.add(orderResult(order)));
 
-        users.searchForAdmin(query, firstFour).forEach(user -> result.add(
-                new AdminSearchResultResponse("USER", user.getId(), user.getEmail(),
-                        user.getRole().name(), "/users")));
+            users.searchForAdmin(query, firstFour).forEach(user -> result.add(
+                    new AdminSearchResultResponse("USER", user.getId(), user.getEmail(),
+                            user.getRole().name(), "/users/" + user.getId())));
+        }
 
         return result.stream().limit(TOTAL_LIMIT).toList();
     }

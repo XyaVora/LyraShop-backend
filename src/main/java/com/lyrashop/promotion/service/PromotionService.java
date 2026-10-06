@@ -13,6 +13,9 @@ import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 
 import com.lyrashop.catalog.product.repository.ProductRepository;
 import com.lyrashop.promotion.dto.PromotionProductResponse;
@@ -45,14 +48,11 @@ public class PromotionService {
     @Transactional(readOnly = true)
     public Map<UUID, BigDecimal> activePrices() {
         Instant now = clock.instant();
-        return promotions.findFirstByActiveTrueAndStartsAtLessThanEqualAndEndsAtGreaterThanOrderByEndsAtAsc(now, now)
-                .map(promotion -> items.findAllByPromotionIdOrderByProductIdAsc(promotion.getId()).stream()
-                        .filter(item -> products.existsByIdAndActiveTrue(item.getProductId()))
-                        .collect(Collectors.toUnmodifiableMap(
-                                item -> item.getProductId(),
-                                item -> item.getSalePrice()
-                        )))
-                .orElseGet(Map::of);
+        return promotions.findAllByActiveTrueAndStartsAtLessThanEqualAndEndsAtGreaterThanOrderByEndsAtAsc(now, now)
+                .stream().flatMap(promotion -> items.findAllByPromotionIdOrderByProductIdAsc(promotion.getId()).stream())
+                .filter(item -> products.existsByIdAndActiveTrue(item.getProductId()))
+                .collect(Collectors.toUnmodifiableMap(
+                        item -> item.getProductId(), item -> item.getSalePrice(), BigDecimal::min));
     }
 
     @Transactional(readOnly = true)
@@ -70,9 +70,22 @@ public class PromotionService {
         return promotions.findAll().stream().map(this::response).toList();
     }
 
+    @Transactional(readOnly = true)
+    public Page<PromotionResponse> page(String query, Boolean active, Pageable pageable) {
+        Specification<Promotion> specification = (root, ignored, builder) -> builder.conjunction();
+        if (query != null && !query.isBlank()) {
+            String pattern = "%" + query.strip().toLowerCase(java.util.Locale.ROOT) + "%";
+            specification = specification.and((root, ignored, builder) -> builder.or(
+                    builder.like(builder.lower(root.get("name")), pattern),
+                    builder.like(builder.lower(root.get("description")), pattern)));
+        }
+        if (active != null) specification = specification.and((root, ignored, builder) -> builder.equal(root.get("active"), active));
+        return promotions.findAll(specification, pageable).map(this::response);
+    }
+
     @Transactional
     public PromotionResponse create(PromotionRequest request) {
-        validate(request);
+        validate(request, null);
         Promotion promotion = promotions.saveAndFlush(Promotion.create(request.name(), request.description(),
                 request.discountPercent(), request.startsAt(), request.endsAt(), request.active()));
         replaceItems(promotion, request);
@@ -81,7 +94,7 @@ public class PromotionService {
 
     @Transactional
     public PromotionResponse update(UUID id, PromotionRequest request) {
-        validate(request);
+        validate(request, id);
         Promotion promotion = promotions.findById(id).orElseThrow(() -> new IllegalArgumentException("Promotion not found"));
         promotion.update(request.name(), request.description(), request.discountPercent(),
                 request.startsAt(), request.endsAt(), request.active());
@@ -98,9 +111,15 @@ public class PromotionService {
         promotions.deleteById(id);
     }
 
-    private void validate(PromotionRequest request) {
-        if (!request.endsAt().isAfter(request.startsAt())) throw new IllegalArgumentException("Promotion end must be after start");
-        if (request.productIds().stream().distinct().count() != request.productIds().size()) throw new IllegalArgumentException("Duplicate product");
+    private void validate(PromotionRequest request, UUID excludeId) {
+        if (!request.endsAt().isAfter(request.startsAt())) throw new PromotionConflictException("Thời gian kết thúc phải sau thời gian bắt đầu");
+        if (request.productIds().stream().distinct().count() != request.productIds().size()) throw new PromotionConflictException("Danh sách có sản phẩm trùng lặp");
+        if (request.active() && !request.productIds().isEmpty()) {
+            List<UUID> overlaps = items.findOverlappingProductIds(
+                    request.productIds(), request.startsAt(), request.endsAt(), excludeId);
+            if (!overlaps.isEmpty()) throw new PromotionConflictException(
+                    "Sản phẩm đã có khuyến mãi hoạt động trùng thời gian: " + overlaps);
+        }
     }
 
     private void replaceItems(Promotion promotion, PromotionRequest request) {

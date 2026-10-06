@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RequestParam;
 
 import com.lyrashop.order.dto.OrderResponse;
 import com.lyrashop.order.dto.UpdateOrderStatusRequest;
@@ -26,6 +27,10 @@ import com.lyrashop.order.dto.ReturnDecisionRequest;
 import com.lyrashop.order.dto.ReturnRequestResponse;
 import com.lyrashop.order.service.OrderNotFoundException;
 import com.lyrashop.order.service.OrderService;
+import com.lyrashop.common.dto.PageResponse;
+import com.lyrashop.common.web.AdminPageable;
+import com.lyrashop.order.entity.OrderStatus;
+import com.lyrashop.order.entity.PaymentStatus;
 
 import jakarta.validation.Valid;
 
@@ -40,19 +45,37 @@ public class AdminOrderController {
         this.orderService = orderService;
     }
 
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','ORDER_MANAGER','SUPPORT')")
     @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
     public List<OrderResponse> list() {
         return orderService.listAll();
     }
 
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','ORDER_MANAGER','SUPPORT')")
+    @GetMapping(path = "/page", produces = MediaType.APPLICATION_JSON_VALUE)
+    public PageResponse<OrderResponse> page(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String query,
+            @RequestParam(required = false) OrderStatus status,
+            @RequestParam(required = false) PaymentStatus paymentStatus,
+            @RequestParam(defaultValue = "createdAt") String sort,
+            @RequestParam(defaultValue = "desc") String direction
+    ) {
+        var result = orderService.pageAll(query, status, paymentStatus, AdminPageable.of(
+                page, size, sort, direction,
+                java.util.Set.of("totalAmount", "status", "paymentStatus", "createdAt", "paidAt", "updatedAt"),
+                "createdAt"));
+        return PageResponse.from(result, result.getContent());
+    }
+
+    @PreAuthorize("hasAnyRole('ADMIN','ORDER_MANAGER','SUPPORT')")
     @GetMapping(path = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
     public OrderResponse get(@PathVariable String id) {
         return orderService.get(orderId(id));
     }
 
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','ORDER_MANAGER','SUPPORT')")
     @PutMapping(path = "/{id}/status", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public OrderResponse updateStatus(
             @PathVariable String id,
@@ -61,26 +84,33 @@ public class AdminOrderController {
         return orderService.updateStatus(orderId(id), request.status());
     }
 
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','ORDER_MANAGER','SUPPORT')")
     @PutMapping(path = "/{id}/cancel", consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
     public OrderResponse cancel(@PathVariable String id, @Valid @RequestBody CancelOrderRequest request) {
         return orderService.cancelForAdmin(orderId(id), request.reason());
     }
 
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','ORDER_MANAGER','SUPPORT')")
     @GetMapping(path = "/return-requests", produces = MediaType.APPLICATION_JSON_VALUE)
     public List<ReturnRequestResponse> returnRequests() {
         return orderService.listReturnRequestsForAdmin();
     }
 
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','ORDER_MANAGER','SUPPORT')")
+    @GetMapping(path = "/return-requests/page", produces = MediaType.APPLICATION_JSON_VALUE)
+    public PageResponse<ReturnRequestResponse> returnRequestsPage(@RequestParam(defaultValue="0") int page,
+            @RequestParam(defaultValue="20") int size,@RequestParam(required=false) String query,
+            @RequestParam(required=false) String status,@RequestParam(defaultValue="createdAt") String sort,
+            @RequestParam(defaultValue="desc") String direction){var result=orderService.pageReturnRequestsForAdmin(query,status,AdminPageable.of(page,size,sort,direction,java.util.Set.of("status","createdAt","updatedAt"),"createdAt"));return PageResponse.from(result,result.getContent());}
+
+    @PreAuthorize("hasAnyRole('ADMIN','ORDER_MANAGER','SUPPORT')")
     @GetMapping(path = "/{id}/return-request", produces = MediaType.APPLICATION_JSON_VALUE)
     public ReturnRequestResponse returnRequest(@PathVariable String id) {
         return orderService.getReturnRequestForAdmin(orderId(id));
     }
 
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','ORDER_MANAGER','SUPPORT')")
     @PutMapping(path = "/{id}/return-request/approve", consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
     public ReturnRequestResponse approveReturn(@PathVariable String id,
@@ -88,7 +118,7 @@ public class AdminOrderController {
         return orderService.approveReturn(orderId(id), request.note());
     }
 
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','ORDER_MANAGER','SUPPORT')")
     @PutMapping(path = "/{id}/return-request/reject", consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
     public ReturnRequestResponse rejectReturn(@PathVariable String id,
@@ -96,7 +126,7 @@ public class AdminOrderController {
         return orderService.rejectReturn(orderId(id), request.note());
     }
 
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','ORDER_MANAGER','SUPPORT')")
     @PutMapping(path = "/{id}/return-request/receive", consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
     public ReturnRequestResponse receiveReturn(@PathVariable String id,
@@ -104,7 +134,7 @@ public class AdminOrderController {
         return orderService.receiveReturn(orderId(id), request.note());
     }
 
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','ORDER_MANAGER','SUPPORT')")
     @PostMapping(path = "/{id}/refunds", consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
     public RefundResponse refund(Authentication authentication, @PathVariable String id,
@@ -112,26 +142,26 @@ public class AdminOrderController {
         return orderService.refundOrder(orderId(id), UUID.fromString(authentication.getName()), request);
     }
 
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','ORDER_MANAGER','SUPPORT')")
     @GetMapping(path = "/{id}/refunds", produces = MediaType.APPLICATION_JSON_VALUE)
     public List<RefundResponse> refunds(@PathVariable String id) {
         return orderService.listRefunds(orderId(id));
     }
 
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','ORDER_MANAGER','SUPPORT')")
     @PutMapping(path = "/{id}/tracking", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public OrderResponse updateTracking(@PathVariable String id,
             @Valid @RequestBody UpdateTrackingRequest request) {
         return orderService.updateTracking(orderId(id), request.carrier(), request.trackingCode(),
                 request.trackingUrl(), request.estimatedDeliveryAt());
     }
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','ORDER_MANAGER','SUPPORT')")
     @GetMapping(path = "/{id}/tracking-events", produces = MediaType.APPLICATION_JSON_VALUE)
     public java.util.List<java.util.Map<String, Object>> tracking(@PathVariable String id) {
         return orderService.trackingForAdmin(orderId(id));
     }
 
-    @PreAuthorize("hasRole('ADMIN')") @PostMapping(path="/{id}/tracking-events",consumes=MediaType.APPLICATION_JSON_VALUE,produces=MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAnyRole('ADMIN','ORDER_MANAGER','SUPPORT')") @PostMapping(path="/{id}/tracking-events",consumes=MediaType.APPLICATION_JSON_VALUE,produces=MediaType.APPLICATION_JSON_VALUE)
     public java.util.Map<String,Object> addTracking(@PathVariable String id,@Valid @RequestBody TrackingEventRequest request){return orderService.addTrackingEvent(orderId(id),request);}
 
     private static UUID orderId(String id) {

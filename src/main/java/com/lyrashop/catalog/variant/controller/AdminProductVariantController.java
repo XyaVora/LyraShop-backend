@@ -15,21 +15,21 @@ public class AdminProductVariantController {
  private final ProductVariantService service;
  public AdminProductVariantController(ProductVariantService service){this.service=service;}
 
- @PreAuthorize("hasRole('ADMIN')")
+ @PreAuthorize("hasAnyRole('ADMIN','CATALOG_MANAGER')")
  @PostMapping(consumes=MediaType.APPLICATION_JSON_VALUE,produces=MediaType.APPLICATION_JSON_VALUE)
  public ResponseEntity<ProductVariantResponse> create(@PathVariable String productId,@Valid @RequestBody CreateProductVariantRequest request){
   try{return ResponseEntity.status(HttpStatus.CREATED).body(ProductVariantResponse.from(service.create(UUID.fromString(productId),request)));}
   catch(IllegalArgumentException e){throw new VariantProductNotFoundException();}
  }
 
- @PreAuthorize("hasRole('ADMIN')")
+ @PreAuthorize("hasAnyRole('ADMIN','CATALOG_MANAGER')")
  @PutMapping(path="/{variantId}",consumes=MediaType.APPLICATION_JSON_VALUE,produces=MediaType.APPLICATION_JSON_VALUE)
  public ResponseEntity<ProductVariantResponse> update(@PathVariable String productId,@PathVariable String variantId,@Valid @RequestBody UpdateProductVariantRequest request){
   try{return ResponseEntity.ok(ProductVariantResponse.from(service.update(UUID.fromString(productId),UUID.fromString(variantId),request)));}
   catch(IllegalArgumentException e){throw new VariantNotFoundException();}
  }
 
- @PreAuthorize("hasRole('ADMIN')")
+ @PreAuthorize("hasAnyRole('ADMIN','CATALOG_MANAGER')")
  @PatchMapping(path="/{variantId}/deactivate")
  public ResponseEntity<Void> deactivate(@PathVariable String productId,@PathVariable String variantId){
   UUID productUuid;
@@ -40,7 +40,7 @@ public class AdminProductVariantController {
   return ResponseEntity.noContent().build();
  }
 
- @PreAuthorize("hasRole('ADMIN')")
+ @PreAuthorize("hasAnyRole('ADMIN','CATALOG_MANAGER')")
  @PatchMapping(path="/{variantId}/activate")
  public ResponseEntity<Void> activate(@PathVariable String productId,@PathVariable String variantId){
   UUID productUuid;
@@ -51,7 +51,7 @@ public class AdminProductVariantController {
   return ResponseEntity.noContent().build();
  }
 
- @PreAuthorize("hasRole('ADMIN')")
+ @PreAuthorize("hasAnyRole('ADMIN','CATALOG_MANAGER')")
  @PatchMapping(path="/{variantId}/inventory",consumes=MediaType.APPLICATION_JSON_VALUE,produces=MediaType.APPLICATION_JSON_VALUE)
  public ProductVariantInventoryResponse adjustInventory(Authentication authentication,@PathVariable String productId,@PathVariable String variantId,@Valid @RequestBody AdjustProductVariantInventoryRequest request){
   UUID productUuid;
@@ -61,6 +61,6 @@ public class AdminProductVariantController {
   return ProductVariantInventoryResponse.from(service.adjustInventory(productUuid,variantUuid,UUID.fromString(authentication.getName()),request));
  }
 
- @PreAuthorize("hasRole('ADMIN')") @GetMapping(path="/inventory-adjustments",produces=MediaType.APPLICATION_JSON_VALUE)
+ @PreAuthorize("hasAnyRole('ADMIN','CATALOG_MANAGER')") @GetMapping(path="/inventory-adjustments",produces=MediaType.APPLICATION_JSON_VALUE)
  public java.util.List<InventoryAdjustmentResponse> inventoryHistory(@PathVariable String productId){try{return service.inventoryHistory(UUID.fromString(productId));}catch(IllegalArgumentException e){throw new VariantProductNotFoundException();}}
 }

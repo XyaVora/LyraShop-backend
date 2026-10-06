@@ -5,10 +5,10 @@ spring:
     username: ${DB_USERNAME:lyrashop}
     password: ${DB_PASSWORD:lyrashop_local}
   flyway:
-    # lyrashop_schema.sql is a V1-V34 snapshot and intentionally has no history table.
-    # Empty databases still run every migration; imported snapshots start at V34.
+    # lyrashop_schema.sql is a V1-V41 snapshot and intentionally has no history table.
+    # Empty databases still run every migration; imported snapshots start at V41.
     baseline-on-migrate: ${FLYWAY_BASELINE_ON_MIGRATE:true}
-    baseline-version: ${FLYWAY_BASELINE_VERSION:34}
+    baseline-version: ${FLYWAY_BASELINE_VERSION:41}
 
 app:
   uploads:
